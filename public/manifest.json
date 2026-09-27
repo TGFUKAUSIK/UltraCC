@@ -1,0 +1,49 @@
+{
+  "name": "UltraCC — VIT Student OS",
+  "short_name": "UltraCC",
+  "description": "Your VIT academic command centre — timetable, attendance, marks, grades, exams and more.",
+  "id": "/",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "launch_handler": { "client_mode": "focus-existing" },
+  "background_color": "#080b12",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "edge_side_panel": { "preferred_width": 420 },
+  "icons": [
+    { "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-any.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "maskable" },
+    { "src": "/icon-maskable.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Timetable",
+      "short_name": "Timetable",
+      "url": "/?tab=timetable&source=pwa",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Attendance",
+      "short_name": "Attendance",
+      "url": "/?tab=academics&source=pwa",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Free Classrooms & Labs",
+      "short_name": "Free Rooms",
+      "url": "/?tab=freeClassrooms&source=pwa",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Exam Schedule",
+      "short_name": "Exams",
+      "url": "/?tab=exams&source=pwa",
+      "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "lang": "en"
+}

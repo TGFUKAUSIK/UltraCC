@@ -1,0 +1,23 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.vscode/
+backups/
+*.rar
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Supabase CLI scratch files (project ref, org id, pooler URL)
+supabase/.temp/
+
+# Local, unrelated scratch
+assets/
+.freebuff/
+idp-review-1/
