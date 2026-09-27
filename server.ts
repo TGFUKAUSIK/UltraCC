@@ -30,14 +30,7 @@ async function startServer() {
 
       const { prompt, context } = req.body;
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
-      });
+      const ai = new GoogleGenAI({ apiKey });
 
       const systemInstruction = `You are UltraCC's Intelligent Academic Strategist for VIT Chennai students.
 You understand the FFCS credit system, A1+TA1/B1+TB1 slot structures, CAT1 (50 marks scaled to 15), CAT2 (50 marks scaled to 15), Digital Assignments (10 marks), Quiz/Surprise Test (10 marks), FAT (100 marks scaled to 40 or 50), and the strict 75% attendance rule.

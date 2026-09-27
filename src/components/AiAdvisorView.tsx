@@ -39,7 +39,7 @@ Always give direct, actionable, student-first advice. Keep responses structured 
 /** Call the Gemini REST API directly from the browser with the saved key. */
 async function askGemini(apiKey: string, userText: string, context: unknown): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  // AI Studio "AQ."-prefixed keys authenticate via the x-goog-api-key header.
+  // API keys authenticate via the x-goog-api-key header.
   headers['x-goog-api-key'] = apiKey;
 
   const body = {
