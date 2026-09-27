@@ -1,0 +1,3567 @@
+{
+  "routes": [
+    {
+      "routeNumber": "1",
+      "routeName": "THIRUVOTTIYUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THIRUVOTTIYUR",
+          "pickupTime": "6.05 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "N-4",
+          "pickupTime": "6.10 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "KASIMEDU SIGNAL",
+          "pickupTime": "6.15 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "2",
+      "routeName": "PURASAIWALKAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PURASAIWALKAM TANK",
+          "pickupTime": "6.10 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "GENGU REDDY SUB WAY",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "CHETPET",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "VALLUVAR KOTTAM",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "3",
+      "routeName": "PARRYS",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PARRYS CORNER",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KANNAGI STATUE",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "LIGHT HOUSE",
+          "pickupTime": "6.23 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "ALL INDIA RADIO",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "MRC NAGAR",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 6,
+          "stopName": "SRP TOOLS",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 7,
+          "stopName": "KANDANCHAVADI",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "4",
+      "routeName": "KALPAKKAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KALPAKKAM",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "ANUPURAM",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MAHABALIPURAM KOOT ROAD(POONCHERY)",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "THANDALAM",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "THIRUPORUR",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "5",
+      "routeName": "STERLING ROAD",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "NELSON MANICKAM ROAD",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "POTHYS(T.NAGAR)",
+          "pickupTime": "6.25 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "6",
+      "routeName": "SANTHOME",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "SANTHOME",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PATINAPAKKAM",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "SATHYA STUDIOS",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "NEELANGARAI",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "INJAMBAKKAM",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "7",
+      "routeName": "TRIPLICANE",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "TRIPLICANE",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "ROYAPETTAH",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "8",
+      "routeName": "BESANT NAGAR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "BESANT NAGAR BUS STAND",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "VANNANTHURAI BUS STAND",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "VETTUVANKENI CHRUCH",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "AKKARI",
+          "pickupTime": "7.00 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "9",
+      "routeName": "MANDAVELI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MANDAVELI",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KALIYAPPA HOSPITAL",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MOOPANAR BRIDGE",
+          "pickupTime": "6.35 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "10",
+      "routeName": "MADHYAKAILASH",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MADHYAKAILASH",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MADIPAKKAM KOOT ROAD",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "11",
+      "routeName": "POWER HOUSE",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "POWER HOUSE",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SAMIYAR MADAM",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "WEST MAMBALAM",
+          "pickupTime": "6.35 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "12",
+      "routeName": "ASHOK PILLAR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "ASHOK PILLAR",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KASI THEATRE",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "EKKATU THANGAL",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "13",
+      "routeName": "KUTCHERY ROAD",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KUTCHERY ROAD",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "LUZ",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MYLAPORE TANK",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "MANDAVELI BSNL OFFICE",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "TANSI NAGAR",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "Mr.Rajkumar",
+      "supervisorPhone": "8925840256"
+    },
+    {
+      "routeNumber": "14",
+      "routeName": "ADYAR AAVIN",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "ADYAR AAVIN",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "ADYAR TELEPHONE EXCHANGE",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PTC QUARTERS",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "15",
+      "routeName": "AMMA NANA",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KOTTURPURAM",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "THORAIPAKKAM",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "KARAPAKKAM",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "16",
+      "routeName": "THIRUVANMIYUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THIRUVANMIYUR",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "THIRUVANMIYUR RTO",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "17",
+      "routeName": "DEVAR STATUE (NANDANAM JUNCTION)",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "DEVAR STATUE (NANDANAM JUNCTION)",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "VELACHERY VIJAYANAGAR",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "Mr.Suesh",
+      "supervisorPhone": "7338873885"
+    },
+    {
+      "routeNumber": "18",
+      "routeName": "GANDHIMANDAPAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "GANDHIMANDAPAM",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "GUINDY RACE COURCE",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "NGO COLONY",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "19",
+      "routeName": "AYODHYA MANDAPAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "AYODHYA MANDAPAM",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "VELACHERY RAILWAY STATION",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PALLIKARANAI SIVAN KOIL",
+          "pickupTime": "7.00 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "20",
+      "routeName": "PERUNGUDI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PERUNGUDI",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "RADIANCE APT.",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "KAMATCHI HOSPITAL",
+          "pickupTime": "6.55 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "S KOLATHUR",
+          "pickupTime": "7.00 AM"
+        }
+      ],
+      "supervisorName": "Mr.Suesh",
+      "supervisorPhone": "7338873885"
+    },
+    {
+      "routeNumber": "21",
+      "routeName": "ADAMBAKKAM POLICE BOOTH",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "ADAMBAKKAM POLICE BOOTH",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "Mr.Sudhakar",
+      "supervisorPhone": "7358050500"
+    },
+    {
+      "routeNumber": "22",
+      "routeName": "PHOENIX MALL",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PHOENIX MALL",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "VELACHERY 100 FEET ROAD",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "23",
+      "routeName": "VGP",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VGP",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PERUMBAKKAM",
+          "pickupTime": "7.15 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MEDAVAKKAM",
+          "pickupTime": "7.20 AM"
+        }
+      ],
+      "supervisorName": "Mr.Kumar",
+      "supervisorPhone": "9445141276"
+    },
+    {
+      "routeNumber": "24",
+      "routeName": "MADIPAKKAM POONNIAMMAN KOIL",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "POONNIAMMAN KOIL",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "25",
+      "routeName": "MADIPAKKAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "RAM NAGAR",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "UTI BANK",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "26",
+      "routeName": "KOTTIVAKKAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KOTTIVAKKAM",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PALAVAKKAM",
+          "pickupTime": "6.55 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MGM",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "KOVALAM",
+          "pickupTime": "7.05 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "27",
+      "routeName": "SHOLINGANALLUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "SHOLINGANALLUR",
+          "pickupTime": "7.10 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "28",
+      "routeName": "ECHANGADU SIGNAL",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "ECHANGADU SIGNAL",
+          "pickupTime": "6.55 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KOVILAMBAKKAM",
+          "pickupTime": "7.00 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "29",
+      "routeName": "VELACHERY VIJAYANAGAR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VELACHERY VIJAYANAGAR",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "30",
+      "routeName": "PERAMBUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PERAMBUR RAILWAY STATION",
+          "pickupTime": "6.10 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PERAMBUR CHURCH",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "KOLATHUR JUNCTION NEAR VINAYGAR TEMPLE",
+          "pickupTime": "6.25 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "31",
+      "routeName": "MANALI NEW TOWN",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MANALI NEW TOWN",
+          "pickupTime": "6.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MANALI MARKET",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MATHUR",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "MILK COLONY",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "ARUL NAGAR",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 6,
+          "stopName": "POST OFFICE",
+          "pickupTime": "6.35 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "32",
+      "routeName": "REDHILLS",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "REDHILLS",
+          "pickupTime": "6.05 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KAVANKARAI",
+          "pickupTime": "6.10 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PUZHAL CAMP",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "KALIKUPPAM",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "PUDHUR",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "33",
+      "routeName": "PADI EAST AVENUE",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PADI EAST AVENUE",
+          "pickupTime": "6.10 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MANIKANDAPURAM BUS STAND",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "AMBATTUR OT",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "AVADI CHECKPOST",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "34",
+      "routeName": "THIRUVALLUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THIRUVALLUR BUS STAND",
+          "pickupTime": "6.05 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PUTTLUR",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "SEVAPATET",
+          "pickupTime": "6.25 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "35",
+      "routeName": "AYANAVARAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "AYANAVARAM",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "ESI HOSPITAL",
+          "pickupTime": "6.18 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MEDAVAKKAM TANK ROAD",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "SECRETARIAT COLONY",
+          "pickupTime": "6.23 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "KELLYS",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 6,
+          "stopName": "MUMMY DADY BUS STAND",
+          "pickupTime": "6.28 AM"
+        },
+        {
+          "stopOrder": 7,
+          "stopName": "KILPAUK GARDEN",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "36",
+      "routeName": "DAGAC (AMBEDKAR COLLEGE)",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "DAGAC (AMBEDKAR COLLEGE)",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SHARMA NAGAR",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "ERUKKANCHERY",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "KANGACHATHIRAM",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "KALPANA",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 6,
+          "stopName": "PORUR TOLL PLAZA",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "37",
+      "routeName": "SRIPERUMBUDUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "SRIPERUMBUDUR",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "IRUNGATTUKOTTAI",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PAPPANCHATHIRAM",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "CHEMBARAMBAKKAM",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "NAZARATHPETTAI",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "38",
+      "routeName": "VEPPAMPATTU RLY.",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VEPPAMPATTU RLY.",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "THIRUNINDRAVUR",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "JAYA SCHOOL BUS STOP",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "PATTABIRAM",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "HINDU COLLEGE",
+          "pickupTime": "6.55 AM"
+        },
+        {
+          "stopOrder": 6,
+          "stopName": "NEMILICHERY",
+          "pickupTime": "7.05 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "39",
+      "routeName": "KANCHIPURAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KANCHIPURAM",
+          "pickupTime": "6.10 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "WALAJABAD",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "ORAGADAM",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "40",
+      "routeName": "NATRAJA THEATERE",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "NATRAJA THEATERE",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "CHENNAI CORPORATION (RIPON BUILDING)",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PANTHEON ROAD ( EGMORE RAMADA HOTEL )",
+          "pickupTime": "6.25 AM"
+        }
+      ],
+      "supervisorName": "Mr.Rajkumar",
+      "supervisorPhone": "8925840256"
+    },
+    {
+      "routeNumber": "41",
+      "routeName": "NATHAMUNI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "NATHAMUNI",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "K4 POLICE STATION",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "18TH MAIN ROAD",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "42",
+      "routeName": "CHENGALPATTU",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VALLAM",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "CHENGALPATTU (GOVT. HOSPITAL)",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PARANUR TOLLGATE",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "SP KOIL",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "43",
+      "routeName": "RAMAPURAM JUNCTION",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "RAMAPURAM JUNCTION",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "DLF",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "44",
+      "routeName": "THIRUMULLAIVOYAL BUS STAND",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THIRUMULLAIVOYAL BUS STAND",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "VAISNAVINAGAR",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MURUGAPPA POLYTECHNIC COLLEGE",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "AVADI",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "45",
+      "routeName": "KOLATHUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KOLATHUR PERTOL BUNK",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "WELDING SHOP",
+          "pickupTime": "6.35 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "46",
+      "routeName": "KALIAMMAN KOIL MAIN ROAD (KOYEMBEDU MARKET)",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KALIAMMAN KOIL MAIN ROAD (KOYEMBEDU MARKET)",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "VIRUGAMBAKKAM SIGNAL",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "GERUGAMBAKKAM",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "47",
+      "routeName": "IYYAPANTHANGAL BUS STAND",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "IYYAPANTHANGAL BUS STAND",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "IYYAPANTHANGAL HYUNDAI SHOWROOM",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "KATTUPAKKAM",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "KUMMANACHAVADI (DMART)",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "48",
+      "routeName": "THIRUVERKADU ARCH",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THIRUVERKADU ARCH",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "NOLAMBUR",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "VELAMMAL HALL",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "49",
+      "routeName": "AMBEDKAR NAGAR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "AMBEDKAR NAGAR",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "RETTERI",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "VINAYAGAPURAM",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "50",
+      "routeName": "GOVARDANAGIRI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "GOVARDANAGIRI",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "51",
+      "routeName": "CHINTHAMANI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "CHINTHAMANI",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "BLUE STAR",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "SHANTHI COLONY",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "ANNA ARCH",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "52",
+      "routeName": "KK NAGAR DEPOT",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KK NAGAR DEPOT",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SIVANPARK",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "VALASARAVAKKAM",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "Mr.Madhan",
+      "supervisorPhone": "9787200323"
+    },
+    {
+      "routeNumber": "53",
+      "routeName": "COLLECTOR NAGAR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "COLLECTOR NAGAR",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "JJ NAGAR POLICE STATION",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "7H BUS DEPOT",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "7M BUS DEPOT",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "Mr.Nanda",
+      "supervisorPhone": "9884966825"
+    },
+    {
+      "routeNumber": "54",
+      "routeName": "VANAGARAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VANAGARAM",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PARIVAKKAM SIGNAL",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "POONAMALLEE BYPASS",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "55",
+      "routeName": "NOLAMBUR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "NOLAMBUR",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "56",
+      "routeName": "ICF",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "ICF",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PADI SARAVANA STORES",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "AMBATTUR INDUSTRIAL ESTATE",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "AMBATTUR TELEPHONE EXACHANGE",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "57",
+      "routeName": "AYAPAKKAM JUNCTION",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "AYAPAKKAM JUNCTION",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "DECLATHON",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "58",
+      "routeName": "AMBATTUR ORAGADAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "AMBATTUR ORAGADAM",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "AMBATTUR OT",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "Mr.Kumar",
+      "supervisorPhone": "9445141276"
+    },
+    {
+      "routeNumber": "59",
+      "routeName": "SENTHIL NAGAR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "SENTHIL NAGAR",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MADURAVOYAL ERIKARAI",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "60",
+      "routeName": "MUGALIVAKKAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MUGALIVAKKAM",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KOLAPAKKAM",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "GERUGAMBAKKAM",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "THIRUNEERMALAI",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "61",
+      "routeName": "MANGADU",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MANGADU",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KOVUR",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "KUNDRATHUR",
+          "pickupTime": "6.55 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "DMART",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 5,
+          "stopName": "MADHA COLLEGE",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 6,
+          "stopName": "THIRUMUDIVAKKAM",
+          "pickupTime": "7.10 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "62",
+      "routeName": "AMINJIKARAI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "AMINJIKARAI",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SKYWALK",
+          "pickupTime": "6.32 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "63",
+      "routeName": "CMBT",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "CMBT",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MMDA",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "VADAPALANI",
+          "pickupTime": "6.40 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "64",
+      "routeName": "AVICHI SCHOOL",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "AVICHI SCHOOL",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "65",
+      "routeName": "PORUR SARAVANA STORE",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PORUR SARAVANA STORE",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "PORUR JUNCTION",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "66",
+      "routeName": "THIRUMANGALAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THIRUMANGALAM",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "WAVES",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "67",
+      "routeName": "MADHANANDAPURAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MADHANANDAPURAM",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "68",
+      "routeName": "METHA NAGAR",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "METHA NAGAR",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "ANAGAPUTHUR BUS STAND",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "RETTAI PILLAIYAR KOVIL,PAMMAL",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "69",
+      "routeName": "MAHINDRA CITY",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MAHINDRA CITY",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KATTANKOLATHUR",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MARAIMALAI NAGAR",
+          "pickupTime": "7.00 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "70",
+      "routeName": "KAUVERY HOSPITAL",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KAUVERY HOSPITAL",
+          "pickupTime": "6.55AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "CROMPET BUS STAND",
+          "pickupTime": "7.05 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "71",
+      "routeName": "NANGANALLUR J.K MAHAL",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "NANGANALLUR J.K MAHAL",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "72",
+      "routeName": "NANGANALLUR PARK",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "NANGANALLUR PARK",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "73",
+      "routeName": "PALLAVARAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PALLAVARAM",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "96",
+      "routeName": "KALMANDAPAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KALMANDAPAM",
+          "pickupTime": "6.10 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "BEACH STATION",
+          "pickupTime": "6.15 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "SECRETARIAT",
+          "pickupTime": "6.20 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "THIRUVANMIYUR JAYANTHI",
+          "pickupTime": "6.35 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "97",
+      "routeName": "SEMMANCHERI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "SEMMANCHERI",
+          "pickupTime": "7.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "NAVALUR",
+          "pickupTime": "7.20 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MARINA MALL",
+          "pickupTime": "7.25 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "98",
+      "routeName": "TTK ROAD",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "TTK ROAD",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "ALWARPET JUNCTION",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "ADAMBAKKAM POLICE BOOTH",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "99",
+      "routeName": "THILLAI GANGA NAGAR SUBWAY",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THILLAI GANGA NAGAR SUBWAY",
+          "pickupTime": "6.55 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "VANUVAMPET CHURCH",
+          "pickupTime": "7.00 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "100",
+      "routeName": "MADIPAKKAM KEELKATALAI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KEELKATALAI",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KOVILAMBAKKAM",
+          "pickupTime": "7.00 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "102",
+      "routeName": "MOOLAKADAI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MOOLAKADAI",
+          "pickupTime": "6.25 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MADHAVARAM ROUNDTANA",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "103",
+      "routeName": "GOLDEN FLATS",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "GOLDEN FLATS",
+          "pickupTime": "6.45 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "WAVIN",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "104",
+      "routeName": "DAILY THANTHI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "DAILY THANTHI",
+          "pickupTime": "6.30 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "DASAPRAKASH",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "ARUMBAKKAM",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "NERKUNDRAM",
+          "pickupTime": "6.50 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "105",
+      "routeName": "THATHANKUPPAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "THATHANKUPPAM",
+          "pickupTime": "6.35 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "ANNA NAGAR WEST DEPOT",
+          "pickupTime": "6.40 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "ROHINI THEATRE",
+          "pickupTime": "6.45 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "106",
+      "routeName": "PORUR BAIKADAI",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PORUR BAIKADAI",
+          "pickupTime": "6.55 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "107",
+      "routeName": "VALASARAVAKKAM",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VALASARAVAKKAM",
+          "pickupTime": "6.30 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "108",
+      "routeName": "ALANDUR METRO",
+      "type": "AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "ALANDUR METRO",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "NANGANALLUR PETROL BUNK",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MEENAMBAKKAM",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "CHROMPET SARAVANA STORES",
+          "pickupTime": "7.15 AM"
+        }
+      ],
+      "supervisorName": "",
+      "supervisorPhone": ""
+    },
+    {
+      "routeNumber": "74",
+      "routeName": "TAMBARAM RAILWAY STATION",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "Mr.Madhan",
+      "supervisorPhone": "9787200323",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "TAMBARAM RAILWAY STATION - WEST",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "HINDU MISSION HOSPITAL",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PERUNGALATHUR",
+          "pickupTime": "7.15 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "VANDALUR",
+          "pickupTime": "7.20 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "75",
+      "routeName": "POTHERI",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "POTHERI",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "GUDUVANCHERY",
+          "pickupTime": "7.10 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "KOLAPKKAM",
+          "pickupTime": "7.20 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "76",
+      "routeName": "RAJENDRA PRASAD ROAD (A)",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "RAJENDRA PRASAD ROAD",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SELIYUR POLICE STATION",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "77",
+      "routeName": "VARATHARAJAN THEATRE",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VARATHARAJAN THEATRE",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MAPPEDU",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "78",
+      "routeName": "PADAPAI",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PADAPAI",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KARASANGAL",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "MANIVAKKAM JUNCTION",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "79",
+      "routeName": "MADRAS CHRISTIAN COLLEGE (MCC)",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "Mr.Arun",
+      "supervisorPhone": "9087083673",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MCC COLLEGE",
+          "pickupTime": "7.00 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "80",
+      "routeName": "IRUMBULIYUR",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "Mr.Murugadass",
+      "supervisorPhone": "8122992974",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "IRUMBULIYUR",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SSM NAGAR",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "NEDUKUNDRAM TVS",
+          "pickupTime": "7.15 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "81",
+      "routeName": "MAHALAKSHMI NAGAR",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MAHALAKSHMI NAGAR",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "CAMP ROAD",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "82",
+      "routeName": "LAKSHMIPURAM",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "LAKSHMIPURAM",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MUDICHUR (ATTA COMPANY)",
+          "pickupTime": "7.05 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "83",
+      "routeName": "BHARATH UNIVERSITY",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "BHARATH UNIVERSITY",
+          "pickupTime": "7.00 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "84",
+      "routeName": "BALAJI DENTAL COLLEGE",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "BALAJI DENTAL COLLEGE",
+          "pickupTime": "6.50 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "85",
+      "routeName": "VELACHERY RAILWAY STATION",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "VELACHERY RAILWAY STATION-KAIVELI",
+          "pickupTime": "7.00 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "86",
+      "routeName": "SEMBAKKAM",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "SEMBAKKAM",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MADAMBAKKAM JUNCTION",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "87",
+      "routeName": "GOWRIVAKKAM",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "GOWRIVAKKAM",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SANTOSAHPURAM",
+          "pickupTime": "7.10 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "VIJAYANAGARAM",
+          "pickupTime": "7.15 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "SBIOA",
+          "pickupTime": "7.25 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "88",
+      "routeName": "RAJAKILPAKKAM",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "RAJAKILPAKKAM",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KOZHIPANNAI",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "89",
+      "routeName": "KAIVELI",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KAIVELI JUNCTION",
+          "pickupTime": "6.50 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "CHITALAPAKKAM",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "CHITALAPAKKAM KOOT ROAD",
+          "pickupTime": "7.10 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "MEDAVAKKAM MAMBAKKAM JUNCTION",
+          "pickupTime": "7.15 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "90",
+      "routeName": "BOLLINENI HILLS",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "BOLLINENI HILLS",
+          "pickupTime": "7.00 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "91",
+      "routeName": "KAMARAJAPURAM",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "KAMARAJAPURAM",
+          "pickupTime": "7.05 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SUDHARSHAN NAGAR",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "92",
+      "routeName": "PADUR",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "Mr.Kumar",
+      "supervisorPhone": "9445141276",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PADUR",
+          "pickupTime": "7.20 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KELAMBAKKAM JUNCTION",
+          "pickupTime": "7.25 AM"
+        },
+        {
+          "stopOrder": 3,
+          "stopName": "PUDUPAKKAM",
+          "pickupTime": "7.30 AM"
+        },
+        {
+          "stopOrder": 4,
+          "stopName": "MAMBAKKAM",
+          "pickupTime": "7.35 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "93",
+      "routeName": "PALLIKARANAI JEYACHANDRAN",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PALLIKARANAI JEYACHANDRAN",
+          "pickupTime": "7.05 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "94",
+      "routeName": "PUP SCHOOL - MEDAVAKKAM",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "MEDAVAKKAM",
+          "pickupTime": "7.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "KALISWARY OIL MILL",
+          "pickupTime": "7.20 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "95",
+      "routeName": "MEDAVAKKAM PUTHU KOIL",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "PUTHU KOVIL",
+          "pickupTime": "7.15 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "MEDAVAKKAM KOOT ROAD",
+          "pickupTime": "7.20 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "101",
+      "routeName": "DLF APTS",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "DLF APTS",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SITHALAPAKKAM KOOT ROAD",
+          "pickupTime": "7.05 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "109",
+      "routeName": "URAPAKKAM",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "URAPAKKAM",
+          "pickupTime": "7.15 AM"
+        }
+      ]
+    },
+    {
+      "routeNumber": "110",
+      "routeName": "RAJENDRA PRASAD ROAD (B)",
+      "type": "Non-AC",
+      "driverName": "",
+      "driverPhone": "",
+      "whatsappGroup": "",
+      "busLocation": "",
+      "supervisorName": "",
+      "supervisorPhone": "",
+      "stops": [
+        {
+          "stopOrder": 1,
+          "stopName": "RAJENDRA PRASAD ROAD",
+          "pickupTime": "7.00 AM"
+        },
+        {
+          "stopOrder": 2,
+          "stopName": "SELIYUR POLICE STATION",
+          "pickupTime": "7.10 AM"
+        }
+      ]
+    }
+  ],
+  "placements": [
+    {
+      "routeNumber": "30",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "31",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "32",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "33",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "34",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "35",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "36",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "37",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "38",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "39",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "40",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "41",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "42",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "43",
+      "dispersalTime": "5PM",
+      "zone": "CLOCK COURT - AAVIN ROAD"
+    },
+    {
+      "routeNumber": "44",
+      "dispersalTime": "5PM",
+      "zone": "B BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "45",
+      "dispersalTime": "5PM",
+      "zone": "B BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "46",
+      "dispersalTime": "5PM",
+      "zone": "B BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "47",
+      "dispersalTime": "5PM",
+      "zone": "B BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "48",
+      "dispersalTime": "5PM",
+      "zone": "B BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "49",
+      "dispersalTime": "5PM",
+      "zone": "B BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "50",
+      "dispersalTime": "5PM",
+      "zone": "C BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "51",
+      "dispersalTime": "5PM",
+      "zone": "C BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "52",
+      "dispersalTime": "5PM",
+      "zone": "C BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "53",
+      "dispersalTime": "5PM",
+      "zone": "C BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "54",
+      "dispersalTime": "5PM",
+      "zone": "C BLOCK HOSTEL ROAD"
+    },
+    {
+      "routeNumber": "55",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "56",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "57",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "58",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "59",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "60",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "61",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "62",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "63",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "64",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "65",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "66",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "67",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "68",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "69",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "70",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "71",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "72",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "73",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "74",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "75",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "76",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "77",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "78",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "79",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "80",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "81",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "82",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "83",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "84",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "85",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "86",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "87",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "88",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "89",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "90",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "91",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "92",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "93",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "94",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "95",
+      "dispersalTime": "5PM",
+      "zone": "AB3 BACKSIDE INDIAN BANK ROAD"
+    },
+    {
+      "routeNumber": "1",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "2",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "3",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "4",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "5",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "6",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "7",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "8",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "9",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "10",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "11",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "12",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "13",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "14",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "15",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "16",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "17",
+      "dispersalTime": "5PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "18",
+      "dispersalTime": "5PM",
+      "zone": "FROM MGR STATUE TO GATE 1 ROAD"
+    },
+    {
+      "routeNumber": "19",
+      "dispersalTime": "5PM",
+      "zone": "FROM MGR STATUE TO GATE 1 ROAD"
+    },
+    {
+      "routeNumber": "20",
+      "dispersalTime": "5PM",
+      "zone": "FROM MGR STATUE TO GATE 1 ROAD"
+    },
+    {
+      "routeNumber": "21",
+      "dispersalTime": "5PM",
+      "zone": "FROM MGR STATUE TO GATE 1 ROAD"
+    },
+    {
+      "routeNumber": "22",
+      "dispersalTime": "5PM",
+      "zone": "FROM MGR STATUE TO GATE 1 ROAD"
+    },
+    {
+      "routeNumber": "23",
+      "dispersalTime": "5PM",
+      "zone": "FROM MGR STATUE TO GATE 1 ROAD"
+    },
+    {
+      "routeNumber": "24",
+      "dispersalTime": "5PM",
+      "zone": "FROM MGR STATUE TO GATE 1 ROAD"
+    },
+    {
+      "routeNumber": "25",
+      "dispersalTime": "5PM",
+      "zone": "NEAR STUDENTS PARKING LOT 1 ROAD"
+    },
+    {
+      "routeNumber": "26",
+      "dispersalTime": "5PM",
+      "zone": "NEAR STUDENTS PARKING LOT 1 ROAD"
+    },
+    {
+      "routeNumber": "27",
+      "dispersalTime": "5PM",
+      "zone": "NEAR STUDENTS PARKING LOT 1 ROAD"
+    },
+    {
+      "routeNumber": "28",
+      "dispersalTime": "5PM",
+      "zone": "NEAR STUDENTS PARKING LOT 1 ROAD"
+    },
+    {
+      "routeNumber": "29",
+      "dispersalTime": "5PM",
+      "zone": "NEAR STUDENTS PARKING LOT 1 ROAD"
+    },
+    {
+      "routeNumber": "96",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "97",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "98",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "99",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "100",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "101",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "102",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "103",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "104",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "105",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "106",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "107",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "108",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "109",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    },
+    {
+      "routeNumber": "110",
+      "dispersalTime": "6PM",
+      "zone": "FROM GATE 2 TO MGR STATUE ROAD"
+    }
+  ],
+  "rules": [
+    {
+      "ruleNumber": 1,
+      "content": "All students should have valid fee paid receipt while boarding inside the bus."
+    },
+    {
+      "ruleNumber": 2,
+      "content": "The students are insisted to travel only in the particular bus which is allotted and mentioned in the allotment file. They should not board in other buses except late hour evening classes, exams and other institutional functions."
+    },
+    {
+      "ruleNumber": 3,
+      "content": "All students should have paid the transportation fee before using the college bus. Frequent checking by Transport Officer will be done along with the Biometric attendance. Those who are travelling without paying fee will be subjected to an enquiry and fine."
+    },
+    {
+      "ruleNumber": 4,
+      "content": "Biometric attendance will be taken while boarding inside the bus whenever needed."
+    },
+    {
+      "ruleNumber": 5,
+      "content": "The order of siting inside the bus should be strictly followed as given\na. Front Seats - Girl Students\nb. Back Seats - Boys Students\nc. Middle seats- Faculty and staff"
+    },
+    {
+      "ruleNumber": 6,
+      "content": "Hearing songs with high volume, shouting unnecessarily, dancing and any other activities which disturb the fellow passengers will be viewed seriously as disciplinary issue. Those who are doing such activities won\u00e2\u20ac\u2122t be allowed to utilize the college transport facility and depending upon the severity of those activities, concern student will be subjected to an enquiry by Discipline Committee."
+    },
+    {
+      "ruleNumber": 7,
+      "content": "Bus drivers should be treated genuinely by students as they are important for our safety and comfort during journey. Using unnecessary colloquial languages and disrespecting the drivers will be viewed seriously."
+    },
+    {
+      "ruleNumber": 8,
+      "content": "Students involving in any in disciplinary activities which will affect the college name will be subjected to an enquiry by Discipline Committee. Those students won\u00e2\u20ac\u2122t be allowed to continue the college transport facility and or suspended from the college based on the severity of the issue."
+    },
+    {
+      "ruleNumber": 9,
+      "content": "Any issue related to bus timings, bus break down, fee payment and cleanliness of the bus can be brought to notice of transport.cc@vit.ac.in."
+    },
+    {
+      "ruleNumber": 10,
+      "content": "Shuttle buses in afternoon \u00e2\u20ac\u201c After checking while boarding, students will be allowed to board inside the bus, once seats filled the bus will start immediately; reserving seats for friends will not be entertained."
+    },
+    {
+      "ruleNumber": 11,
+      "content": "Students should follow strictly the code of conduct and the above said regulations to operate college transport facility in a smooth and students\u00e2\u20ac\u2122 friendly way."
+    }
+  ]
+}
