@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TimetableSlot } from '../../types';
-import { currentTimetableDay, getNextTimetableSlot, getOngoingTimetableSlot, getTimetableCellSlots, getTimetableContinuationSlots, getTimetableDays, getTimetableDaySlots, getTimetableGap, getTimetableTimeRows, isTimetableSlotOngoing, timetableSessionDuration } from '../timetableGrid';
+import { currentTimetableDay, getNextTimetableSlot, getOngoingTimetableSlot, getTimetableCellSlots, getTimetableContinuationSlots, getTimetableDays, getTimetableDaySlots, getTimetableGap, getTimetableTimeRows, isTimetableSlotOngoing, MIN_FREE_GAP_MINUTES, minutesOfDay, timetableSessionDuration, timetableTimeToMinutes } from '../timetableGrid';
 
 const slot = (overrides: Partial<TimetableSlot>): TimetableSlot => ({
   id: 'slot', courseCode: 'CSE1001', courseTitle: 'Networks', slot: 'A1', facultyName: 'Dr. X',
@@ -18,6 +18,14 @@ describe('timetable grid helpers', () => {
   it('builds aligned time rows from actual VTOP records only', () => {
     const rows = getTimetableTimeRows([slot({ startTime: '09:50', endTime: '10:40' }), slot({ startTime: '08:00', endTime: '08:50' }), slot({ startTime: '', endTime: '' })]);
     expect(rows).toEqual([{ startTime: '08:00', endTime: '08:50' }, { startTime: '09:50', endTime: '10:40' }]);
+  });
+
+  it('reads the clock on the same axis it reads a class time', () => {
+    // "What time is it" and "when does A1 start" must be one unit, or every
+    // ongoing/next/current comparison has to remember a conversion.
+    expect(minutesOfDay(new Date(2026, 8, 7, 8, 5))).toBe(485);
+    expect(minutesOfDay(new Date(2026, 8, 7, 0, 0))).toBe(0);
+    expect(minutesOfDay(new Date(2026, 8, 7, 9, 50))).toBe(timetableTimeToMinutes('09:50'));
   });
 
   it('marks an ongoing class and finds the next class from current time', () => {
@@ -103,8 +111,15 @@ describe('timetable week days and gaps', () => {
     expect(getTimetableGap(timetable, timeRow('11:50', '12:40'), timeRow('13:30', '14:20'))).toBeNull();
   });
 
-  it('ignores breaks shorter than 45 minutes and the final row', () => {
+  it('ignores breaks shorter than the shared usable-gap rule and the final row', () => {
+    // 10 minutes is a walk between rooms, not a break — and the cut-off is the
+    // same `MIN_FREE_GAP_MINUTES` the day card applies below the grid, so a
+    // break can never be usable in one place and invisible in the other.
+    const after = (offset: number) => `${String(Math.floor((530 + offset) / 60)).padStart(2, '0')}:${String((530 + offset) % 60).padStart(2, '0')}`;
     expect(getTimetableGap([], timeRow('08:00', '08:50'), timeRow('09:00', '09:50'))).toBeNull();
+    expect(getTimetableGap([], timeRow('08:00', '08:50'), timeRow(after(MIN_FREE_GAP_MINUTES - 1), '10:40'))).toBeNull();
+    expect(getTimetableGap([], timeRow('08:00', '08:50'), timeRow(after(MIN_FREE_GAP_MINUTES), '10:40'))?.minutes)
+      .toBe(MIN_FREE_GAP_MINUTES);
     expect(getTimetableGap([], timeRow('08:00', '08:50'), undefined)).toBeNull();
   });
 });

@@ -66,7 +66,39 @@ const BANNED: Record<string, string> = {
   'raw VTOP details': 'VTOP\'s own fields are already shown under their labels',
   'VAPID public key': 'a key name is not a reason a student can act on',
   'push_notifications migration': 'the migration is ours to apply',
+  'not yet live-verified': 'how ready our parsers are is not the student\'s problem — say "not available yet"',
+  'Submission failed': 'passive voice about our insert; say it stayed on the device and what to do',
+  'campus-data service': 'names our hosting where the student is being told what the list is',
+  // Batch A: the signed-out and static screens explained themselves as pipeline
+  // states. Each of these was on a student's screen once.
+  'official hostel-feed integration': 'the mess menu has no source; saying which feed is missing is ours to know',
+  'from the current VTOP sync': 'a sync is our mechanism; the student needs to know there is nothing to read',
+  'authoritative campus feed': 'a feed is our word for data we do not have',
+  'STATIC / VERIFIED ONLY': 'how a row is stored is not how a student decides to trust it',
+  'USER-PROVIDED REFERENCE': 'the same row labelled twice in pipeline words',
+  'USER-GENERATED · OPT-IN': 'opt-in describes our table, not the groups on screen',
+  'Verified print references': 'we have not verified these; they are what students reported',
+  'voluntarily entered': 'legal-shaped phrasing for "what someone chose to post"',
 };
+
+/**
+ * Native browser dialogs are banned as a class, not for their wording.
+ *
+ * `window.prompt` and `window.confirm` return null with no dialog at all in an
+ * iOS home-screen PWA (and `alert` renders that ugly OS sheet over an app that
+ * otherwise looks native). UltraCC is installed on phones by most of its users,
+ * so a prompt was a silently dead button there: the ride board's four poster
+ * actions and the FFCS plan rename all did nothing on an iPhone. Feedback
+ * belongs in `showToast`; an answer belongs in an inline field.
+ */
+const NATIVE_DIALOG = [
+  /window\s*\.\s*prompt\s*\(/,
+  /window\s*\.\s*alert\s*\(/,
+  /window\s*\.\s*confirm\s*\(/,
+  /(^|[^.\w])prompt\s*\(\s*['"`]/,
+  /(^|[^.\w])alert\s*\(\s*['"`]/,
+  /(^|[^.\w])confirm\s*\(\s*['"`]/,
+];
 
 describe('student-facing copy carries no developer telemetry', () => {
   it('scans the rendered surface, not a stub list', () => {
@@ -81,6 +113,14 @@ describe('student-facing copy carries no developer telemetry', () => {
       expect(offenders(RENDER, phrase)).toEqual([]);
     });
   }
+
+  it('uses no native browser dialog anywhere a student can click', () => {
+    const found = RENDER
+      .map((f) => ({ f, hits: NATIVE_DIALOG.filter((re) => re.test(codeOnly(f))).length }))
+      .filter((x) => x.hits > 0)
+      .map((x) => `${relative(x.f)} (${x.hits})`);
+    expect(found).toEqual([]);
+  });
 
   it('keeps the build identity out of every component', () => {
     // It still exists — main.tsx version-stamps the service worker with it —

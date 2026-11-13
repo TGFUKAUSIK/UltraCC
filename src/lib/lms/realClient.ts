@@ -55,6 +55,8 @@ function envOr(key: string, fallback: string): string {
 }
 
 function gatewayUrl(): string {
+  // Set VITE_LMS_GATEWAY_URL to your own deployed function; the public build
+  // ships a placeholder rather than a project URL.
   return envOr('VITE_LMS_GATEWAY_URL', 'https://your-project.supabase.co/functions/v1/lms-gateway');
 }
 

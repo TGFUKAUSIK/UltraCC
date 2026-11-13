@@ -5,8 +5,10 @@
  * The UI components were built against a richer view-model (venues, room
  * numbers, safe/warning/critical categories, weightage strings, ...). These
  * adapters derive that view-model deterministically from the normalized VTOP
- * data — no fabricated values are introduced except neutral defaults that the
- * UI needs to render (e.g. fat weightage of 50).
+ * data. Nothing here invents a number: a weight VTOP has not published arrives
+ * as 0 / undefined and stays unknown, because a neutral default — a FAT worth
+ * "50", say — reads to a student as VTOP's own scheme and quietly rewrites the
+ * grade maths downstream.
  */
 
 import {
@@ -29,6 +31,7 @@ import {
 import { GradeSummary } from './types';
 import { to24hTime } from './parsers/helpers';
 import { resolveSchool } from '../../utils/vitSchools';
+import { calendarDaysUntil } from '../../utils/examUtils';
 import { isLabSession, combineLabSessions } from '../../utils/labSessions';
 
 /**
@@ -74,6 +77,11 @@ function cleanFaculty(name: string | undefined | null): string {
   trimmed = trimmed.replace(/^\d{4,6}\s+/, '').trim();
   trimmed = trimmed.replace(/\s+[-–]\s*(Professor|Associate Professor|Assistant Professor|Prof\.?|Dr\.?)$/i, '').trim();
   trimmed = trimmed.replace(/\s+(SELECT|SSL|SCOPE|SENSE|SMEC|SAS|SBST|SCE|VFIT|V-SMART|SJT|AB1|AB2)$/i, '').trim();
+  // Removing a school suffix can leave the separator it was joined with behind:
+  // the live cache holds "BINU BEN JOSE D R - SELECT", which the rule above turns
+  // into "... D R -". A real name never ends in a bare dash, so the orphan goes
+  // rather than printing as "NAME -".
+  trimmed = trimmed.replace(/\s*[-–—]\s*$/, '').trim();
   return trimmed;
 }
 
@@ -182,7 +190,6 @@ export function toUiAttendance(rows: VtopAttendance[], timetable?: VtopTimetable
     attended: r.attended,
     totalHeld: r.totalHeld,
     percentage: r.percentage,
-    category: categoryFromPercentage(r.percentage),
     lastUpdated: r.lastUpdated || '',
     venue: venueByCourse.get(r.courseCode) || '',
   }));
@@ -197,12 +204,6 @@ function toUiCourseType(courseType: string, courseCode: string): AttendanceRecor
   if (t.includes('ETH') || t === 'THEORY') return 'ETH';
   if (t.includes('TH')) return 'TH';
   return 'ETH';
-}
-
-function categoryFromPercentage(pct: number): AttendanceRecord['category'] {
-  if (pct >= 80) return 'Safe';
-  if (pct >= 75) return 'Warning';
-  return 'Critical';
 }
 
 export function toUiTimetable(slots: VtopTimetableSlot[]): TimetableSlot[] {
@@ -269,7 +270,7 @@ export function toUiMarks(records: VtopMarks[]): CourseMarks[] {
     // "score ~X/100 in FAT for a B" arithmetic needs — so its declared max
     // and weightage survive; `status: 'Pending'` is what marks it ungraded.
     // No FAT row at all stays all-zero (final exam not declared yet).
-    const fatOf = (c?: { scored: number; maxMarks: number; weightageMax: number; status?: string; weightageMark?: number }) =>
+    const fatOf = (c?: { scored: number; maxMarks: number; weightageMax: number; status?: string; weightageMark?: number; part?: 'T' | 'L' }) =>
       c
         ? {
           scored: Number.isFinite(c.scored) ? c.scored : 0,
@@ -280,6 +281,10 @@ export function toUiMarks(records: VtopMarks[]): CourseMarks[] {
           weightage: c.weightageMax,
           status: c.status,
           weightageMark: c.weightageMark,
+          // A FAT is a row like any other: dropping its class put the lab's
+          // paper inside the theory half, so a 3+1 course reported a theory
+          // mark out of 120 and a lab out of 20.
+          part: c.part,
         }
         : { scored: 0, max: 0, weightage: 0 };
     return {
@@ -314,9 +319,9 @@ export function toUiMarks(records: VtopMarks[]): CourseMarks[] {
 }
 
 export function toUiExams(exams: VtopExam[]): ExamSchedule[] {
-  const today = new Date();
+  const now = Date.now();
   return exams.map((e) => {
-    const daysUntil = daysUntilDate(e.date, today);
+    const daysUntil = calendarDaysUntil(e.date, now);
     return {
       id: e.id,
       slot: e.slot || undefined,
@@ -345,14 +350,6 @@ function toUiExamType(type: string): ExamSchedule['examType'] {
   // stays 'Other'. Labelling it 'FAT' invented an assessment type the
   // student's own mark sheet does not have.
   return 'Other';
-}
-
-function daysUntilDate(dateStr: string, from: Date): number | null {
-  if (!dateStr) return null;
-  const date = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  return Math.round((date.getTime() - start.getTime()) / 86400000);
 }
 
 export function toUiAssignments(tasks: VtopAssignment[]): AssignmentTask[] {

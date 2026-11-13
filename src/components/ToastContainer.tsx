@@ -34,7 +34,7 @@ const renderToast = (toast: Toast) => {
   return (
     <div
       key={toast.id}
-      className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-2xl border backdrop-blur-md shadow-lg transition-all duration-200 ${style}`}
+      className={`uc-toast pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-2xl border backdrop-blur-md shadow-lg transition-all duration-200 ${style}`}
     >
       <Icon
         className={`h-4 w-4 mt-0.5 shrink-0 ${isSyncing ? 'animate-spin' : ''}`}
@@ -51,7 +51,7 @@ const renderToast = (toast: Toast) => {
           type="button"
           onClick={() => dismissToast(toast.id)}
           aria-label="Dismiss notification"
-          className="shrink-0 -m-1 p-1 min-h-[26px] min-w-[26px] flex items-center justify-center text-current opacity-50 hover:opacity-100 transition cursor-pointer"
+          className="shrink-0 -m-2 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-current opacity-50 hover:opacity-100 transition cursor-pointer"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>

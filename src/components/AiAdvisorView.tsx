@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { Sparkles, Send, Bot, User, Loader2, KeyRound, Database } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Send, Bot, User, Loader2, KeyRound, Database, Info } from 'lucide-react';
 import { StudentProfile, AttendanceRecord, ExamSchedule, TimetableSlot, CourseMarks } from '../types';
 import { GradeSummary, GradeHistory, SemesterGrades, OdSummary } from '../lib/vtop/types';
 import { getGeminiApiKey } from '../lib/settings';
 import { useCgpaPrivacy } from '../lib/cgpaPrivacy';
 import { attendanceComponent, componentLabel } from '../utils/attendanceComponents';
 import { isEvaluatedAssessment } from '../utils/assessmentStatus';
+import { VTOP_ATTENDANCE_FLOOR } from '../utils/attendanceBands';
+import { VIT_BANDS, VIT_FAT_MINIMUM_RATIO, gpaLabel, publishedGpaLabel } from '../utils/gradeModel';
 import { humanErrorCopy } from '../lib/errorCopy';
 
 interface AiAdvisorViewProps {
@@ -32,14 +34,31 @@ interface ChatMessage {
 const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+/**
+ * The grading rules the advisor is allowed to quote, written from the same
+ * tables every other screen reads.
+ *
+ * This prompt used to hardcode "CAT1 (50 marks scaled to 15), … FAT scaled to 40
+ * or 50" — the regulation default, not VTOP's published weightage. A student
+ * whose course carries a 60-weight FAT or a PAT row instead of a quiz got advice
+ * built on a scheme their course does not use, and the numbers in the chat did
+ * not match the card they had just opened. The bands, the FAT floor and the
+ * attendance bar below are generated, so they cannot drift from the model.
+ */
+const GRADE_RULES_TEXT = [
+  `Grade bands (VIT's absolute scale, with the C-points each is worth): ${VIT_BANDS.map((b) => `${b.grade}≥${b.min} (${b.points} pts)`).join(', ')}.`,
+  `A student must also score at least ${Math.round(VIT_FAT_MINIMUM_RATIO * 100)}% of the FAT paper to pass a course, and VTOP withholds attendance credit below ${VTOP_ATTENDANCE_FLOOR}% attendance.`,
+  'For a course’s actual components and weightage, use only the assessment rows in the Student Context — VTOP publishes them per course, and theory, lab and project courses differ. Never assume a fixed CAT/DA/Quiz/FAT split, and never read an assessment VTOP has not graded as a zero.',
+].join(' ');
+
 const SYSTEM_INSTRUCTION = `You are UltraCC's Intelligent Academic Strategist for VIT Chennai students.
-You understand the FFCS credit system, A1+TA1/B1+TB1 slot structures, CAT1 (50 marks scaled to 15), CAT2 (50 marks scaled to 15), Digital Assignments (10 marks), Quiz/Surprise Test (10 marks), FAT (100 marks scaled to 40 or 50), and the strict 75% attendance rule.
+You understand the FFCS credit system and the A1+TA1/B1+TB1 slot structure. ${GRADE_RULES_TEXT}
 Always give direct, actionable, student-first advice. Keep responses structured with concise bullet points, bold emphasis, and empathetic practical guidance. Never encourage reckless attendance loss, but calculate precise safe bunks.`;
 
 /** Call the Gemini REST API directly from the browser with the saved key. */
 async function askGemini(apiKey: string, userText: string, context: unknown): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  // API keys authenticate via the x-goog-api-key header.
+  // AI Studio "AQ."-prefixed keys authenticate via the x-goog-api-key header.
   headers['x-goog-api-key'] = apiKey;
 
   const body = {
@@ -69,6 +88,67 @@ async function askGemini(apiKey: string, userText: string, context: unknown): Pr
   return text;
 }
 
+/**
+ * A reply, typeset.
+ *
+ * The system instruction asks for "concise bullet points, bold emphasis" and
+ * Gemini answers in light markdown. The bubble printed that source verbatim, so
+ * a student read "**Grade bands (VIT's absolute scale…)**" with the asterisks
+ * still on it and got a list as one run-on line of dashes. Only the markers the
+ * instruction actually calls for are turned back into type — bold runs, bullet
+ * and numbered items, inline code, a stray heading's hashes removed — and every
+ * character stays a text node React escapes, never injected HTML.
+ */
+const INLINE_MARK = /(\*\*[^*\n]+\*\*|`[^`\n]+`)/g;
+const BULLET_LINE = /^\s*[-*•]\s+/;
+const NUMBERED_LINE = /^\s*\d+[.)]\s+/;
+const HEADING_LINE = /^#{1,6}\s+/;
+
+function inlineRuns(text: string, key: string): React.ReactNode[] {
+  return text
+    .split(INLINE_MARK)
+    .filter((part) => part !== '')
+    .map((part, i) => {
+      const id = `${key}-${i}`;
+      if (/^\*\*[^*\n]+\*\*$/.test(part)) return <strong key={id}>{part.slice(2, -2)}</strong>;
+      if (/^`[^`\n]+`$/.test(part)) return <code key={id} className="uc-msg-code">{part.slice(1, -1)}</code>;
+      return <React.Fragment key={id}>{part}</React.Fragment>;
+    });
+}
+
+/** Exported so the typesetting can be checked without a network call. */
+export const RichReply: React.FC<{ text: string }> = ({ text }) => {
+  const blocks: React.ReactNode[] = [];
+  let list: { ordered: boolean; text: string }[] = [];
+
+  const closeList = () => {
+    if (!list.length) return;
+    const ordered = list[0].ordered;
+    blocks.push(
+      ordered
+        ? <ol key={`list-${blocks.length}`} className="uc-msg-list">{list.map((item, i) => <li key={i}>{inlineRuns(item.text, `li-${blocks.length}-${i}`)}</li>)}</ol>
+        : <ul key={`list-${blocks.length}`} className="uc-msg-list">{list.map((item, i) => <li key={i}>{inlineRuns(item.text, `li-${blocks.length}-${i}`)}</li>)}</ul>,
+    );
+    list = [];
+  };
+
+  text.split('\n').forEach((raw) => {
+    const line = raw.trim();
+    const bullet = BULLET_LINE.test(line);
+    const numbered = NUMBERED_LINE.test(line);
+    if (bullet || numbered) {
+      list.push({ ordered: numbered, text: line.replace(BULLET_LINE, '').replace(NUMBERED_LINE, '').trim() });
+      return;
+    }
+    closeList();
+    if (!line) return;
+    blocks.push(<p key={`p-${blocks.length}`}>{inlineRuns(line.replace(HEADING_LINE, ''), `p-${blocks.length}`)}</p>);
+  });
+  closeList();
+
+  return <>{blocks}</>;
+};
+
 export const AiAdvisorView: React.FC<AiAdvisorViewProps> = ({ student, attendance, timetable, marks, exams, grades, gradeHistory, semesterGrades, od, semesterLabel }) => {
   const [cgpaHidden] = useCgpaPrivacy();
   const [prompt, setPrompt] = useState('');
@@ -84,6 +164,51 @@ export const AiAdvisorView: React.FC<AiAdvisorViewProps> = ({ student, attendanc
       time: 'Just now',
     },
   ]);
+
+  // Every chip below stands on a record that exists. A course count of zero is
+  // not information, and "CGPA: —" is a placeholder wearing a label: the same
+  // rule the Grades and My Info screens follow, where an unpublished figure is
+  // absent rather than rendered as a stub.
+  const recordCount = attendance.length + timetable.length + marks.length + exams.length;
+  const cgpaFigure = cgpaHidden ? '••••' : publishedGpaLabel(student.cgpa, '');
+
+  /**
+   * Starter questions written from the records in front of the student.
+   *
+   * These four used to be fixed strings — "Can I safely bunk Discrete Math C1
+   * slot today?", "…CAT 2 Data Structures", "…DBMS FAT…" — courses most students
+   * are not registered for. Tapping one handed the model a question about a
+   * course that was not in the context it had just been given, and the answer
+   * came back confident about a subject the student never took. Each line below
+   * is derived from the synced rows and is simply absent when no row can carry it.
+   */
+  const samplePrompts = useMemo(() => {
+    const prompts: string[] = [];
+
+    // The theory course with the least headroom — the one a bunk question is
+    // actually about. VTOP tracks theory and lab separately, so the lab half of
+    // a course is not what a "C1 slot" question means.
+    const tightest = attendance
+      .filter((a) => attendanceComponent(a) === 'Theory' && a.totalHeld > 0)
+      .sort((a, b) => a.percentage - b.percentage)[0];
+    if (tightest) {
+      const name = tightest.courseTitle || tightest.courseCode;
+      prompts.push(`Can I safely bunk ${name}${tightest.slot ? ` (${tightest.slot})` : ''} this week?`);
+    }
+
+    // The nearest exam VTOP has actually dated.
+    const nextExam = exams.filter((e) => e.date).sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (nextExam) {
+      prompts.push(`Build me a study plan for ${nextExam.courseTitle || nextExam.courseCode} ${nextExam.examType}.`);
+    }
+
+    // A course VTOP has graded something in, so a FAT target is a real question.
+    const graded = marks.find((m) => [m.cat1, m.cat2, m.da1, m.da2, m.da3, m.quiz].some(isEvaluatedAssessment));
+    if (graded) prompts.push(`What FAT score do I need in ${graded.courseCode} to hold my grade?`);
+
+    prompts.push('Summarize my highest academic risks this week.');
+    return prompts;
+  }, [attendance, exams, marks]);
 
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = customPrompt || prompt;
@@ -202,7 +327,12 @@ export const AiAdvisorView: React.FC<AiAdvisorViewProps> = ({ student, attendanc
               })),
             }
           : null,
-        odHours: od?.available ? { total: od.totalOdHours, limit: od.limitHours } : null,
+        // Name the quantity, and state a cap only when one was published: the
+        // model used to receive `{ total, limit }` and call the hours *used* a
+        // balance, exactly the way the dashboard did.
+        odHours: od?.available
+          ? { hoursUsed: od.totalOdHours, ...(od.limitHours !== null ? { semesterCapHours: od.limitHours } : {}) }
+          : null,
       };
       const advice = await askGemini(key, textToSend, context);
       setMessages((prev) => [
@@ -232,148 +362,110 @@ export const AiAdvisorView: React.FC<AiAdvisorViewProps> = ({ student, attendanc
     }
   };
 
-  const samplePrompts = [
-    'Can I safely bunk Discrete Math C1 slot today?',
-    'Create a 5-day study plan for CAT 2 Data Structures.',
-    'What target score do I need in DBMS FAT for an S grade?',
-    'Summarize my highest academic risks this week.',
-  ];
-
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header Bento Card */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div className="flex items-center space-x-4">
-          <div className="p-3.5 acc-soft border acc-border rounded-2xl acc-text">
-            <Sparkles className="h-6 w-6 animate-pulse" />
+    <div className="uc-index pb-12">
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">Powered by Gemini</span>
+            <h2 className="uc-dir-name">AI academic strategist</h2>
+            <p className="uc-note">Contextual reasoning for attendance bunk calculation, exam preparation plans, and grade simulations.</p>
           </div>
-          <div>
-            <div className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-0.5">
-              Powered by Gemini
+        </div>
+        <div className="uc-dir-detail">
+          {!hasKey && (
+            <div className="uc-note-row uc-note-row--warn">
+              <KeyRound aria-hidden="true" />
+              <span>No Gemini API key set. Add yours in <b>Settings → Gemini API key</b> (stored only on this device) to enable the AI advisor.</span>
             </div>
-            <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">AI Academic Strategist</h2>
-            <p className="text-xs text-zinc-500 mt-1 font-medium">
-              Contextual reasoning for attendance bunk calculation, exam preparation plans, and grade simulations.
-            </p>
+          )}
+          <h3 className="uc-dir-subhead"><Database className="uc-dir-inline" />{recordCount > 0 ? `The AI can see your synced data (${semesterLabel || 'active semester'})` : 'The AI can see your profile only'}</h3>
+          {recordCount > 0 ? (
+            <div className="uc-dir-tags">
+              {attendance.length > 0 && (
+                <span className="uc-dir-tag">Attendance: <b className="uc-num">{attendance.length}</b> record{attendance.length === 1 ? '' : 's'}</span>
+              )}
+              {timetable.length > 0 && (
+                <span className="uc-dir-tag">Timetable: <b className="uc-num">{timetable.length}</b> slots</span>
+              )}
+              {marks.length > 0 && (
+                <span className="uc-dir-tag">Marks: <b className="uc-num">{marks.length}</b> courses</span>
+              )}
+              {exams.length > 0 && (
+                <span className="uc-dir-tag">Exams: <b className="uc-num">{exams.length}</b></span>
+              )}
+              {/* A CGPA VTOP has not posted has no chip: "CGPA: —" is a stub, and
+                  the privacy toggle's dots are the student's own choice rather
+                  than a placeholder. */}
+              {cgpaFigure && (
+                <span className="uc-dir-tag">CGPA: <b className="uc-num">{cgpaFigure}</b></span>
+              )}
+              {semesterGrades?.available && semesterGrades.gpa != null && (
+                <span className="uc-dir-tag">Semester GPA: <b className="uc-num">{gpaLabel(semesterGrades.gpa)}</b></span>
+              )}
+              {/* Hours *used*, with the cap only when VTOP published one — the
+                  same phrasing the dashboard and the OD tracker carry, so this
+                  number cannot read as a balance. */}
+              {od?.available && (
+                <span className="uc-dir-tag">OD hours used: <b className="uc-num">{od.totalOdHours}h{od.limitHours !== null ? ` of ${od.limitHours}h` : ''}</b></span>
+              )}
+              {student.proctorAvailable && (
+                <span className="uc-dir-tag">Proctor: <b>{student.proctorName}</b></span>
+              )}
+            </div>
+          ) : (
+            <div className="uc-note-row">
+              <Info aria-hidden="true" />
+              <span>No attendance, timetable, marks or exams have synced{semesterLabel ? ` for ${semesterLabel}` : ''} yet. Run a sync from the dashboard and the advisor can reason about them.</span>
+            </div>
+          )}
+          <p className="uc-dir-note uc-dir-sub">Credentials, cookies, CAPTCHA and raw VTOP data are never shared with the AI.</p>
+        </div>
+      </section>
+
+      <section className="uc-plate">
+        <div className="uc-plate-head"><span className="uc-cap">Try asking</span></div>
+        <div className="uc-dir-detail">
+          <div className="uc-asks">
+            {samplePrompts.map((sp, idx) => (
+              <button key={idx} onClick={() => handleSendMessage(sp)} className="uc-ask">
+                <span>“{sp}”</span>
+                {/* The chip's whole job is to send this question, so it carries
+                    the same paper plane as the composer instead of a sparkle. */}
+                <Send aria-hidden="true" />
+              </button>
+            ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      {!hasKey && (
-        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-700 text-xs flex items-center gap-2">
-          <KeyRound className="h-4 w-4 shrink-0" />
-          <span>
-            No Gemini API key set. Add yours in <strong>Settings → Gemini API Key</strong> (stored only on this device) to enable the AI Advisor.
-          </span>
-        </div>
-      )}
-
-      {/* Data visibility — what the AI can see (sanitized academic data only) */}
-      <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xl">
-        <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
-          <Database className="h-3 w-3 acc-text" />
-          The AI can see your synced data ({semesterLabel || 'active semester'})
-        </p>
-        <div className="flex flex-wrap gap-2 text-[10px] font-bold">
-          <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-            Attendance: {attendance.length} record{attendance.length === 1 ? '' : 's'}
-          </span>
-          <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-            Timetable: {timetable.length} slots
-          </span>
-          <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-            Marks: {marks.length} courses
-          </span>
-          <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-            Exams: {exams.length}
-          </span>
-          <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-            CGPA: {cgpaHidden ? '••••' : student.cgpa !== null && student.cgpa !== undefined ? student.cgpa.toFixed(2) : '—'}
-          </span>
-          {semesterGrades?.available && semesterGrades.gpa != null && (
-            <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-              Semester GPA: {semesterGrades.gpa.toFixed(2)}
-            </span>
-          )}
-          <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-            OD: {od?.available ? `${od.totalOdHours}h` : '—'}
-          </span>
-          {student.proctorAvailable && (
-            <span className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900">
-              Proctor: {student.proctorName}
-            </span>
-          )}
-        </div>
-        <p className="text-[10px] text-zinc-600 mt-2.5">
-          Credentials, cookies, CAPTCHA and raw VTOP data are never shared with the AI.
-        </p>
-      </div>
-
-      {/* Suggested Quick Prompts (Bento Cards) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {samplePrompts.map((sp, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSendMessage(sp)}
-            className="p-4 bg-white hover:bg-white border border-zinc-200 hover:border-zinc-200 rounded-2xl text-xs text-left text-zinc-900 transition cursor-pointer flex items-center justify-between group font-medium shadow-md"
-          >
-            <span>"{sp}"</span>
-            <Sparkles className="h-3.5 w-3.5 acc-text opacity-0 group-hover:opacity-100 transition shrink-0 ml-2" />
-          </button>
-        ))}
-      </div>
-
-      {/* Chat Conversation Box */}
-      <div className="bg-white border border-zinc-200 rounded-3xl shadow-xl flex flex-col h-[520px] overflow-hidden">
-        {/* Messages list */}
-        <div className="flex-1 p-6 overflow-y-auto space-y-4">
+      <section className="uc-plate uc-chat">
+        <div className="uc-plate-head"><span className="uc-cap">Conversation</span><Bot className="h-4 w-4" aria-hidden="true" /></div>
+        <div className="uc-chat-log">
           {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`flex items-start space-x-3 ${msg.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}
-            >
-              <div
-                className={`p-2.5 rounded-xl text-zinc-900 shrink-0 ${
-                  msg.sender === 'user' ? 'acc-bg' : 'bg-white border border-zinc-200'
-                }`}
-              >
-                {msg.sender === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4 acc-text" />}
+            <div key={index} className={`uc-msg${msg.sender === 'user' ? ' is-user' : ''}`}>
+              <div className={`uc-msg-ava${msg.sender === 'user' ? ' acc-bg' : ''}`}>
+                {msg.sender === 'user' ? <User className="h-4 w-4" aria-hidden="true" /> : <Bot className="h-4 w-4" aria-hidden="true" />}
               </div>
-
-              <div
-                className={`max-w-[80%] p-4 rounded-2xl text-xs leading-relaxed ${
-                  msg.sender === 'user'
-                    ? 'acc-bg text-zinc-900 rounded-tr-none font-medium shadow-md'
-                    : 'bg-white text-zinc-900 border border-zinc-200 rounded-tl-none whitespace-pre-wrap font-medium'
-                }`}
-              >
-                <p>{msg.text}</p>
-                <p
-                  className={`text-[10px] mt-2 font-mono ${
-                    msg.sender === 'user' ? 'text-blue-700 text-right' : 'text-zinc-500'
-                  }`}
-                >
-                  {msg.time}
-                </p>
+              <div className={`uc-msg-body${msg.sender === 'user' ? ' acc-bg' : ''}`}>
+                {msg.sender === 'user' ? <p>{msg.text}</p> : <RichReply text={msg.text} />}
+                <span className="uc-msg-time">{msg.time}</span>
               </div>
             </div>
           ))}
 
           {loading && (
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 rounded-xl bg-white border border-zinc-200 acc-text">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="p-3.5 bg-zinc-50 border border-zinc-200 rounded-2xl rounded-tl-none text-xs text-zinc-500 flex items-center space-x-2 font-medium">
-                <Loader2 className="h-4 w-4 animate-spin acc-text" />
-                <span>AI Strategist analyzing your records &amp; generating response...</span>
+            <div className="uc-msg">
+              <div className="uc-msg-ava"><Bot className="h-4 w-4" aria-hidden="true" /></div>
+              <div className="uc-chat-await">
+                <Loader2 className="h-4 w-4 spin" aria-hidden="true" />
+                <span>AI Strategist analyzing your records &amp; generating response…</span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Input Bar */}
-        <div className="p-4 bg-white border-t border-zinc-200 flex items-center space-x-3">
+        <div className="uc-chat-bar">
           <input
             type="text"
             aria-label="Ask the AI advisor about attendance, bunk limits or exam planning"
@@ -381,17 +473,18 @@ export const AiAdvisorView: React.FC<AiAdvisorViewProps> = ({ student, attendanc
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
             placeholder="Ask AI Advisor about attendance, bunk limits, or exam planning..."
-            className="flex-1 bg-white border border-zinc-200 rounded-2xl px-4 py-3 text-xs text-zinc-900 placeholder-zinc-500 focus:outline-none focus:border-blue-500 font-medium"
+            className="uc-dir-input"
           />
           <button
             onClick={() => handleSendMessage()}
             disabled={loading || !prompt.trim()}
-            className="p-3 acc-bg hover:opacity-90 disabled:bg-white disabled:text-zinc-600 text-zinc-900 rounded-2xl transition cursor-pointer font-bold text-xs flex items-center justify-center shadow-md"
+            aria-label="Send your question"
+            className="uc-chat-send acc-bg"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

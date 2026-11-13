@@ -167,7 +167,7 @@ Deno.serve(async (request) => {
   const vapid: VapidConfig = {
     publicKey: vapidPublicKey,
     privateKey: vapidPrivateKey,
-    subject: envOrNull('VAPID_SUBJECT') ?? 'mailto:admin@ultracc.app',
+    subject: envOrNull('VAPID_SUBJECT') ?? 'mailto:admin@example.com',
   };
 
   let sent = 0;

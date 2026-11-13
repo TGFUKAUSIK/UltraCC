@@ -328,11 +328,22 @@ export async function syncSemesterData(
   // rethrow surfaced as "VTOP sync failed" and locked a signed-in student out
   // of an app that had their whole semester in memory.
   try {
+    // The stamp means "VTOP answered for this student just now". It is decided
+    // by the three requests an outage or an expired session fails first —
+    // profile, attendance, timetable. A run that lost all three kept whatever
+    // was on the device before, because re-stamping it made the app describe
+    // untouched data as freshly synced for the whole TTL window and the
+    // auto-refresh cooldown refused to retry the outage.
+    const coreFresh =
+      profile.status === 'fulfilled' &&
+      attendance.status === 'fulfilled' &&
+      timetable.status === 'fulfilled';
     await vtopDb.saveAllData(
       { ...resolved, semesters: semestersList, marksDiag },
       'LIVE_VTOP',
       semId,
-      resolved.profile?.registrationNo
+      resolved.profile?.registrationNo,
+      { syncedAt: coreFresh ? Date.now() : (existingCache?.metadata?.lastSyncedAt ?? 0) },
     );
   } catch (e) {
     results.push({

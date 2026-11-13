@@ -70,6 +70,10 @@ function resultFor(results: { key: string; ok: boolean; error?: string }[], key:
 const spies: { mockRestore: () => void }[] = [];
 
 type DbImpl = (...args: unknown[]) => unknown;
+type Spy = {
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => Spy;
+  mockRestore: () => void;
+};
 
 /**
  * Replace named `vtopDb` methods for one test. Arguments are forwarded, so the
@@ -79,9 +83,9 @@ function stubDb(overrides: Record<string, DbImpl>) {
   for (const [name, impl] of Object.entries(overrides)) {
     const target = vtopDb as unknown as Record<string, unknown>;
     if (typeof target[name] !== 'function') throw new Error(`vtopDb.${name} is not a function`);
-    const spy = vi.spyOn(vtopDb as never, name as never)
-      .mockImplementation((...args: unknown[]) => impl(...args) as never);
-    spies.push(spy as unknown as { mockRestore: () => void });
+    const spy = vi.spyOn(vtopDb as never, name as never) as unknown as Spy;
+    spy.mockImplementation((...args: unknown[]) => impl(...args));
+    spies.push(spy);
   }
 }
 

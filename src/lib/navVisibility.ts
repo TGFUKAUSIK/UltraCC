@@ -27,22 +27,56 @@ export function isNavHidden(tab: string): boolean {
 export type FeatureMode = 'minimal' | 'complete';
 
 /**
- * Destinations that stay visible in minimal mode — the daily essentials a
- * student actually reaches on a phone between classes. 'settings' is not a
- * destination but must stay reachable (it is the only way back to complete
- * mode on mobile, where the rail that carries the Settings button is hidden).
+ * Destinations that stay visible in minimal mode.
+ *
+ * Five, in the order a student reaches for them: the Dashboard ('dashboard',
+ * the same home complete mode opens on), Attendance ('academics'), Marks &
+ * Grades ('grades'), the proctor ('faculty') and Settings. 'settings' is not a
+ * route — it is a sheet — but it has to be in the set because it is the only
+ * way back to complete mode once the rail, the tab bar and the services sheet
+ * have all narrowed to the others.
+ *
+ * Five and not four is deliberate, and it is the phone tab bar's own number:
+ * the bar lays its destinations out as a full-width row, so a set of four left
+ * a hole where the fifth column was and read as a broken bar rather than as a
+ * smaller app. Minimal mode is the same app with fewer rooms — it keeps the
+ * room the student starts their day in — so the bar looks like a bar.
+ *
+ * The labels are the services-menu ones, so this set and the navigation can
+ * never drift: Attendance is the 'academics' route, Marks & Grades is 'grades',
+ * and the proctor lives on the 'faculty' route beside the course teachers.
  */
 export const MINIMAL_TABS: ReadonlySet<string> = new Set([
-  'dashboard', 'timetable', 'academics', 'exams', 'grades', 'settings',
+  'dashboard', 'academics', 'grades', 'faculty', 'settings',
 ]);
+
+/** Where minimal mode lands: the Dashboard — the screen every mode opens on, so
+ *  flipping the mode never moves a student off their home screen, and a deep
+ *  link to a room the mode does not have lands somewhere they can act from. */
+export const MINIMAL_LANDING = 'dashboard';
 
 /**
  * Navigation visibility under a chosen feature mode. Complete mode shows every
  * destination except those withdrawn by NAV_HIDDEN_TABS; minimal mode shows
- * only the daily essentials. Deep links still land on hidden pages — this is a
- * preference about what the nav points at, not a hard block.
+ * only the five destinations above.
+ *
+ * In complete mode this stays a preference about what the nav *points at* —
+ * deep links still land on withdrawn pages like 'syllabus'. Minimal mode is
+ * stricter on purpose: a screen the navigation no longer offers must not be
+ * reachable by URL either, or the mode would be a coat of paint.
  */
 export function isNavHiddenInMode(tab: string, mode: FeatureMode): boolean {
   if (isNavHidden(tab)) return true;
   return mode === 'minimal' && !MINIMAL_TABS.has(tab);
+}
+
+/**
+ * The destination a tab resolves to under a mode — the one rule behind both the
+ * landing screen and the deep-link redirect, so a shared `?tab=qbank` link and a
+ * cold start on the last-visited tab can never disagree about where a minimal
+ * student ends up. Complete mode resolves to the tab itself, unchanged.
+ */
+export function resolveTabForMode(tab: string, mode: FeatureMode): string {
+  if (mode !== 'minimal') return tab;
+  return isNavHiddenInMode(tab, mode) ? MINIMAL_LANDING : tab;
 }

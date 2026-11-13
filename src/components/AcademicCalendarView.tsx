@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Calendar, Download, Info, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Download, Info, X } from 'lucide-react';
 import { AcademicCalendar, CalendarDay, TimetableSlot, ExamRecord, AssignmentRecord } from '../lib/vtop/types';
 import { exportCalendarToIcs, downloadIcs } from '../utils/icalExport';
 import { localDateIso, localTodayIso } from '../utils/localDate';
 import { edgeFetch, HubEvent } from '../lib/edgeFetch';
-import { buildEventOverlay, categoryMatches, CalendarCategoryFilter, OverlayEntry, presentCategories } from '../utils/calendarOverlay';
+import { buildEventOverlay, categoryMatches, CalendarCategoryFilter, presentCategories } from '../utils/calendarOverlay';
 import { useDialog } from '../hooks/useDialog';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
@@ -20,17 +20,27 @@ const WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
  *  has to compare full names — with 'Mon' it never matched and every calendar
  *  day silently reported zero classes. */
 const WEEKDAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];type EventType = 'class' | 'exam' | 'assignment' | 'od' | 'holiday' | 'campus' | 'club';
+const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const EVENT_COLORS: Record<EventType, { dot: string; bg: string; text: string; border: string; label: string }> = {
-  class:      { dot: 'bg-emerald-400',  bg: 'bg-emerald-500/10', text: 'text-emerald-700', border: 'border-emerald-500/30', label: 'Class' },
-  exam:       { dot: 'bg-orange-400',   bg: 'bg-orange-500/10',  text: 'text-orange-700',  border: 'border-orange-500/30',  label: 'Exam' },
-  assignment: { dot: 'bg-purple-400',   bg: 'bg-purple-500/10',  text: 'text-purple-700',  border: 'border-purple-500/30',  label: 'Assignment' },
-  od:         { dot: 'bg-blue-400',     bg: 'bg-blue-500/10',    text: 'text-blue-700',    border: 'border-blue-500/30',    label: 'OD' },
-  holiday:    { dot: 'bg-rose-400',     bg: 'bg-rose-500/10',    text: 'text-rose-700',    border: 'border-rose-500/30',    label: 'Holiday' },
-  campus:     { dot: 'bg-sky-400',      bg: 'bg-sky-500/10',     text: 'text-sky-700',     border: 'border-sky-500/30',     label: 'Campus event' },
-  club:       { dot: 'bg-fuchsia-400',  bg: 'bg-fuchsia-500/10', text: 'text-fuchsia-700', border: 'border-fuchsia-500/30', label: 'Club event' },
+type EventType = 'class' | 'exam' | 'assignment' | 'od' | 'holiday' | 'campus' | 'club';
+
+/**
+ * One dot per event kind, and nothing else. The colour lives on an 8px pip and
+ * the label stays in ink, so a day cell reads the same in light, dark and
+ * midnight — a filled chip would have painted the same hue in all three themes
+ * and taken its label colour down with it.
+ */
+const EVENT_COLORS: Record<EventType, { dot: string; label: string }> = {
+  class:      { dot: 'bg-emerald-400', label: 'Class' },
+  exam:       { dot: 'bg-orange-400',  label: 'Exam' },
+  assignment: { dot: 'bg-purple-400',  label: 'Assignment' },
+  od:         { dot: 'bg-blue-400',    label: 'OD' },
+  holiday:    { dot: 'bg-rose-400',    label: 'Holiday' },
+  campus:     { dot: 'bg-sky-400',     label: 'Campus event' },
+  club:       { dot: 'bg-fuchsia-400', label: 'Club event' },
 };
+
+type DayEvents = { types: EventType[]; details: { type: EventType; label: string }[]; classCount: number };
 
 /** Count classes for a given day based on the timetable. */
 function countClasses(dateStr: string, timetable: TimetableSlot[]): number {
@@ -46,8 +56,8 @@ function buildDayEvents(
   timetable: TimetableSlot[],
   exams: ExamRecord[],
   assignments: AssignmentRecord[]
-): Map<string, { types: EventType[]; details: { type: EventType; label: string }[]; classCount: number }> {
-  const map = new Map<string, { types: EventType[]; details: { type: EventType; label: string }[]; classCount: number }>();
+): Map<string, DayEvents> {
+  const map = new Map<string, DayEvents>();
 
   // Calendar days (holidays, CATs, etc.)
   for (const d of days) {
@@ -125,12 +135,19 @@ function buildDayEvents(
   return map;
 }
 
-/** Compact day cell — fixed row height, no aspect-square stretch on wide screens. */
+/**
+ * One day of the term. The number leads the cell — that is what the grid is a
+ * grid of — and the first two event kinds follow as a dot and a truncated label,
+ * because a month view has to be readable at a glance but the day still has to
+ * say what is on it without being tapped. The third event onward is a count.
+ * Row height is fixed by `.calendar-grid`, so a long label truncates instead of
+ * stretching its whole week taller.
+ */
 function DayCell({
-  day, events, isToday, isCurrentMonth, onClick
+  day, monthLabel, events, isToday, isCurrentMonth, onClick
 }: {
   key?: React.Key;
-  day: number; events: { types: EventType[]; details: { type: EventType; label: string }[]; classCount: number } | undefined;
+  day: number; monthLabel: string; events: DayEvents | undefined;
   isToday: boolean; isCurrentMonth: boolean; onClick: () => void;
 }) {
   if (!isCurrentMonth) {
@@ -143,49 +160,42 @@ function DayCell({
   const hasAssignment = events?.types.includes('assignment');
   const classCount = events?.classCount || 0;
 
-  const primaryColor = isHoliday
-    ? 'bg-rose-400'
+  const primaryDot = isHoliday
+    ? EVENT_COLORS.holiday.dot
     : hasExam
-      ? 'bg-orange-400'
+      ? EVENT_COLORS.exam.dot
       : hasOD
-        ? 'bg-blue-400'
+        ? EVENT_COLORS.od.dot
         : hasAssignment
-          ? 'bg-purple-400'
+          ? EVENT_COLORS.assignment.dot
           : classCount > 0
-            ? 'bg-emerald-400'
-            : 'bg-zinc-200';
+            ? EVENT_COLORS.class.dot
+            : 'uc-cal-pip--none';
+
+  const details = events?.details ?? [];
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`calendar-day-cell flex flex-col items-start justify-start gap-0.5 p-1 sm:p-1.5 text-left transition-all cursor-pointer hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
-        isToday
-          ? 'ring-2 ring-blue-500/70 bg-zinc-100 border-blue-500/40'
-          : isHoliday
-            ? 'bg-rose-500/5 border-rose-800/30'
-            : 'bg-zinc-50 border-zinc-200'
-      }`}
+      aria-label={`${day} ${monthLabel} — ${details.length ? `${details.length} ${details.length === 1 ? 'event' : 'events'}` : 'no events'}`}
+      className={`calendar-day-cell uc-cal-cell${isToday ? ' is-today' : ''}${isHoliday ? ' is-off' : ''}`}
     >
-      <div className="flex items-center gap-1 w-full min-w-0">
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${primaryColor}`} />
-        <span className={`text-[11px] sm:text-xs font-bold font-mono leading-none ${isToday ? 'text-zinc-900' : 'text-zinc-900'}`}>
-          {day}
+      <span className="uc-cal-daylock">
+        <b>{day}</b>
+        <i className={`uc-cal-pip ${primaryDot}`} aria-hidden="true" />
+        {classCount > 0 && !isHoliday && <small>{classCount}c</small>}
+      </span>
+      {details.length > 0 && (
+        <span className="uc-cal-badges">
+          {details.slice(0, 2).map((detail, index) => (
+            <span key={`${detail.type}-${index}`} className="uc-cal-badge">
+              <i className={EVENT_COLORS[detail.type].dot} aria-hidden="true" />
+              <span>{detail.label}</span>
+            </span>
+          ))}
+          {details.length > 2 && <span className="uc-cal-more">+{details.length - 2} more</span>}
         </span>
-      </div>
-      {events && events.details.length > 0 && (
-        <div className="mt-0.5 w-full min-w-0 overflow-hidden space-y-px" title={events.details.map((d) => d.label).join(' • ')}>
-          {events.details.slice(0, 2).map((detail, index) => {
-            const colors = EVENT_COLORS[detail.type];
-            return (
-              <span key={`${detail.type}-${index}`} className={`calendar-day-badge flex items-center gap-1 text-[7px] sm:text-[8px] font-bold uppercase tracking-wide px-1 py-px rounded border truncate max-w-full ${colors.bg} ${colors.text} ${colors.border}`}>
-                <span className={`w-1 h-1 rounded-full shrink-0 ${colors.dot}`} />
-                <span className="truncate">{detail.label}</span>
-              </span>
-            );
-          })}
-          {events.details.length > 2 && <span className="block text-[7px] sm:text-[8px] text-zinc-500 truncate px-1">+{events.details.length - 2} more</span>}
-        </div>
       )}
     </button>
   );
@@ -219,7 +229,7 @@ function DayCell({
 function DayPopover({
   dateStr, events, onClose
 }: {
-  dateStr: string; events: { types: EventType[]; details: { type: EventType; label: string }[]; classCount: number } | undefined;
+  dateStr: string; events: DayEvents | undefined;
   onClose: () => void;
 }) {
   const open = !!events && events.details.length > 0;
@@ -241,20 +251,17 @@ function DayPopover({
         <div className="calendar-day-sheet-head">
           <h3 id="calendar-day-title" className="text-sm font-extrabold text-zinc-900">{formatted}</h3>
           <button type="button" onClick={onClose} className="calendar-day-sheet-close" aria-label={`Close ${formatted} details`}>
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         <div className="calendar-day-sheet-body">
-          {events.details.map((d, i) => {
-            const colors = EVENT_COLORS[d.type];
-            return (
-              <div key={i} className={`calendar-day-row flex items-center gap-2 px-3 py-2 rounded-xl ${colors.bg} border ${colors.border}`}>
-                <span className={`w-2.5 h-2.5 rounded-full ${colors.dot}`} />
-                <span className={`text-xs font-bold uppercase tracking-wider ${colors.text}`}>{colors.label}</span>
-                <span className="text-xs text-zinc-900 truncate flex-1">{d.label}</span>
-              </div>
-            );
-          })}
+          {events.details.map((d, i) => (
+            <div key={i} className="calendar-day-row uc-cal-entry">
+              <i className={`uc-cal-pip ${EVENT_COLORS[d.type].dot}`} aria-hidden="true" />
+              <span className="uc-cal-entry-kind">{EVENT_COLORS[d.type].label}</span>
+              <span className="uc-cal-entry-text">{d.label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -266,7 +273,6 @@ export const AcademicCalendarView: React.FC<AcademicCalendarViewProps> = ({
 }) => {
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [categoryFilter, setCategoryFilter] = useState<CalendarCategoryFilter>('all');
   // Campus-event overlay (Event Hub). Kept separate from the authoritative
   // VTOP calendar data and merged only at render time.
@@ -304,7 +310,7 @@ export const AcademicCalendarView: React.FC<AcademicCalendarViewProps> = ({
   // Merge the overlay into the day-event map without touching VTOP rows.
   const mergedDayEvents = useMemo(() => {
     if (eventOverlay.size === 0) return dayEvents;
-    const merged = new Map<string, { types: EventType[]; details: { type: EventType; label: string }[]; classCount: number }>([...dayEvents]);
+    const merged = new Map<string, DayEvents>([...dayEvents]);
     for (const [dateStr, entries] of eventOverlay) {
       const existing = merged.get(dateStr) || { types: [] as EventType[], details: [] as { type: EventType; label: string }[], classCount: 0 };
       for (const entry of entries) {
@@ -318,7 +324,7 @@ export const AcademicCalendarView: React.FC<AcademicCalendarViewProps> = ({
 
   const visibleDayEvents = useMemo(() => {
     if (categoryFilter === 'all') return mergedDayEvents;
-    const filtered = new Map<string, { types: EventType[]; details: { type: EventType; label: string }[]; classCount: number }>();
+    const filtered = new Map<string, DayEvents>();
     for (const [dateStr, entry] of mergedDayEvents) {
       const details = entry.details.filter((d) => categoryMatches(d.type, categoryFilter));
       if (details.length === 0) continue;
@@ -352,142 +358,143 @@ export const AcademicCalendarView: React.FC<AcademicCalendarViewProps> = ({
 
   if (!calendar || !calendar.available || allMonthKeys.length === 0) {
     return (
-      <div className="space-y-6 pb-12">
-        <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-2.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600">
-              <Calendar className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-extrabold text-zinc-900 tracking-tight">Academic Calendar</h2>
-              <p className="text-xs text-zinc-500 font-medium">Instructional days, day orders and holidays from VTOP</p>
+      <div className="uc-cal-view pb-12">
+        <section className="uc-plate uc-dir-mast">
+          <div className="uc-dir-head">
+            <div className="uc-dir-id">
+              <span className="uc-cap">Academic calendar</span>
+              <h2 className="uc-dir-name">Term at a glance</h2>
+              <p className="uc-note">Instructional days, day orders and holidays from VTOP.</p>
             </div>
           </div>
-          <div className="p-6 bg-zinc-50 border border-zinc-200 rounded-2xl text-xs text-zinc-500 flex items-start gap-2">
-            <Info className="h-4 w-4 text-zinc-500 shrink-0 mt-0.5" />
-            <span>
-              Calendar not synced yet — re-sync from <strong className="text-zinc-900">Login</strong> to load the VIT academic calendar.
-            </span>
+        </section>
+        <section className="uc-plate">
+          <div className="uc-dir-detail">
+            <div className="uc-note-row">
+              <Info aria-hidden="true" />
+              <span>
+                Not loaded yet. Re-sync from <b>Login</b> and the VIT academic calendar appears here — every
+                instructional day, day order and holiday VTOP publishes.
+              </span>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     );
   }
 
+  const monthLabel = `${MONTH_LABELS[month - 1]} ${year}`;
+  const layers: [CalendarCategoryFilter, string][] = [['all', 'All'], ['academic', 'Academic (VTOP)']];
+  if (overlayCategories.includes('campus')) layers.push(['campus', 'Campus events']);
+  if (overlayCategories.includes('club')) layers.push(['club', 'Club events']);
+
   return (
-    <div className="space-y-4 pb-12">
-      {/* Month tabs */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-4 sm:p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600">
-              <Calendar className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-extrabold text-zinc-900 tracking-tight">Academic Calendar</h2>
-              <p className="text-[10px] text-zinc-500 font-medium">
-                {monthStats.classes} class days · {monthStats.holidays} holidays · {monthStats.examDays} exam days this month
-              </p>
-            </div>
+    <div className="uc-cal-view pb-12">
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">Academic calendar</span>
+            <h2 className="uc-dir-name">Term at a glance</h2>
+            <p className="uc-note">
+              Instructional days, day orders and holidays from VTOP, with campus and club events layered on top.
+            </p>
           </div>
-          <button
-            onClick={() => { const ics = exportCalendarToIcs(calendar!); downloadIcs(ics, 'ultracc-academic-calendar.ics'); }}
-            className="p-2 rounded-xl bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 transition cursor-pointer"
-            title="Export calendar to .ics"
-          >
-            <Download className="h-4 w-4" />
-          </button>
+          <div className="uc-dir-rail">
+            {/* A minor action, so it stays one compact control beside the
+                content — the term itself is the screen. */}
+            <button
+              type="button"
+              onClick={() => { const ics = exportCalendarToIcs(calendar!); downloadIcs(ics, 'ultracc-academic-calendar.ics'); }}
+              className="uc-cal-ico"
+              title="Export calendar to .ics"
+              aria-label="Export calendar to .ics"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
-        {/* Month tab pills */}
-        <div ref={scrollRef} className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-          {allMonthKeys.map((mk) => {
-            const [y, m] = mk.split('-').map(Number);
-            const label = `${MONTH_LABELS[m - 1].slice(0, 3).toUpperCase()} ${y}`;
-            const isActive = mk === currentMonthKey;
-            return (
+        <div className="uc-cal-tools">
+          <div className="uc-cal-scroll" role="group" aria-label="Month">
+            {allMonthKeys.map((mk) => {
+              const [y, m] = mk.split('-').map(Number);
+              const isActive = mk === currentMonthKey;
+              return (
+                <button
+                  key={mk}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setMonthOffset(allMonthKeys.indexOf(mk))}
+                  className={`uc-cal-chip${isActive ? ' acc-bg' : ''}`}
+                >
+                  {MONTH_LABELS[m - 1].slice(0, 3)} {y}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="uc-cal-scroll" role="group" aria-label="Event layers">
+            {layers.map(([key, label]) => (
               <button
-                key={mk}
-                onClick={() => setMonthOffset(allMonthKeys.indexOf(mk))}
-                className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-blue-600 text-zinc-900 shadow-lg shadow-blue-500/20'
-                    : 'bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:border-zinc-300'
-                }`}
+                key={key}
+                type="button"
+                aria-pressed={categoryFilter === key}
+                onClick={() => setCategoryFilter(key)}
+                className={`uc-cal-chip uc-cal-chip--layer${categoryFilter === key ? ' acc-bg' : ''}`}
               >
                 {label}
               </button>
-            );
-          })}
+            ))}
+          </div>
+
+          <div className="uc-cal-legend">
+            {(Object.entries(EVENT_COLORS) as [EventType, (typeof EVENT_COLORS)[EventType]][]).map(([key, c]) => (
+              <span key={key}>
+                <i className={`uc-cal-dot ${c.dot}`} aria-hidden="true" /> {c.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="uc-plate" aria-label={`${monthLabel} calendar`}>
+        <div className="uc-plate-head">
+          <span className="uc-cap">{monthLabel}</span>
+          <span className="uc-dir-count">
+            <b className="uc-num">{monthStats.classes}</b> class ·{' '}
+            <b className="uc-num">{monthStats.holidays}</b> off ·{' '}
+            <b className="uc-num">{monthStats.examDays}</b> exam
+          </span>
         </div>
 
-        {/* Category filter — official academic vs campus/club overlay */}
-        <div className="flex flex-wrap gap-2 mt-3">
-          {([
-            ['all', 'All'],
-            ['academic', 'Academic (VTOP)'],
-            ...(overlayCategories.includes('campus') ? [['campus', 'Campus events'] as const] : []),
-            ...(overlayCategories.includes('club') ? [['club', 'Club events'] as const] : []),
-          ] as [CalendarCategoryFilter, string][]).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setCategoryFilter(key)}
-              aria-pressed={categoryFilter === key}
-              className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border transition cursor-pointer ${
-                categoryFilter === key
-                  ? 'bg-blue-600 text-zinc-900 border-blue-500'
-                  : 'bg-white text-zinc-500 border-zinc-200 hover:text-zinc-900 hover:border-zinc-300'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <div className="uc-cal-board">
+          <div className="calendar-grid uc-cal-weekdays" aria-hidden="true">
+            {WEEKDAYS.map((w) => <span key={w}>{w}</span>)}
+          </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[10px] text-zinc-500">
-          {(Object.entries(EVENT_COLORS) as [EventType, typeof EVENT_COLORS[EventType]][]).map(([key, c]) => (
-            <span key={key} className="flex items-center gap-1.5">
-              <span className={`w-2.5 h-2.5 rounded-full ${c.dot}`} /> {c.label}
-            </span>
-          ))}
-        </div>
-      </div>
+          <div className="calendar-grid">
+            {Array.from({ length: firstMondayOffset }).map((_, i) => (
+              <div key={`empty-${i}`} className="calendar-day-cell calendar-day-cell--empty" aria-hidden />
+            ))}
 
-      {/* Month grid */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-4 sm:p-6 shadow-xl">
-        {/* Weekday headers */}
-        <div className="calendar-grid mb-1">
-          {WEEKDAYS.map((w) => (
-            <div key={w} className="text-center text-[9px] sm:text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 py-1">
-              {w}
-            </div>
-          ))}
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const day = i + 1;
+              const iso = `${currentMonthKey}-${String(day).padStart(2, '0')}`;
+              return (
+                <DayCell
+                  key={iso}
+                  day={day}
+                  monthLabel={monthLabel}
+                  events={visibleDayEvents.get(iso)}
+                  isToday={iso === today}
+                  isCurrentMonth={true}
+                  onClick={() => setSelectedDay(iso)}
+                />
+              );
+            })}
+          </div>
         </div>
-
-        {/* Day cells — equal-height rows, compact cells */}
-        <div className="calendar-grid">
-          {Array.from({ length: firstMondayOffset }).map((_, i) => (
-            <div key={`empty-${i}`} className="calendar-day-cell calendar-day-cell--empty" aria-hidden />
-          ))}
-
-          {Array.from({ length: daysInMonth }, (_, i) => {
-            const day = i + 1;
-            const iso = `${currentMonthKey}-${String(day).padStart(2, '0')}`;
-            const events = visibleDayEvents.get(iso);
-            return (
-              <DayCell
-                key={iso}
-                day={day}
-                events={events}
-                isToday={iso === today}
-                isCurrentMonth={true}
-                onClick={() => setSelectedDay(iso)}
-              />
-            );
-          })}
-        </div>
-      </div>
+      </section>
 
       {/* Day detail popover */}
       {selectedDay && (
@@ -497,7 +504,6 @@ export const AcademicCalendarView: React.FC<AcademicCalendarViewProps> = ({
           onClose={() => setSelectedDay(null)}
         />
       )}
-
     </div>
   );
 };

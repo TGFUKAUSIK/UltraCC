@@ -13,29 +13,9 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { isSyncInFlight, resetSyncCoordinator } from '../lib/vtop/syncCoordinator';
 import { pickSemesterId, syncSemesterData, SyncDatasetResult } from '../lib/vtop/syncSemester';
 import { getSavedCredentials } from '../lib/settings';
+import { attemptAutoSignIn, readVtopCaptcha, MIN_AUTO_SUBMIT_CONFIDENCE } from '../lib/vtop/autoSignIn';
 import { useDialog } from '../hooks/useDialog';
-
-/**
- * How many times the automatic sign-in may re-arm and guess again.
- *
- * One, not three. Every auto attempt that VTOP rejects is a failed login
- * recorded against the student's real VTOP account (see the lockout note on
- * MIN_AUTO_SUBMIT_CONFIDENCE below), so the loop is deliberately short: one
- * confident guess, one re-arm, then the CAPTCHA is handed to the student, who
- * reads it far more reliably than any local solver.
- */
-const MAX_AUTO_RETRIES = 1;
-
-/**
- * Minimum OCR confidence worth spending a real login attempt on.
- *
- * A wrong CAPTCHA is not a free guess: VTOP answers it with a failed login on
- * the student's actual account, and the portal locks accounts after repeated
- * failures (its own "maximum failed attempts" page). Auto-filling a shaky read
- * therefore trades a small convenience for a real risk of locking the student
- * out of VTOP itself. Below this threshold the image is handed over untouched.
- */
-const MIN_AUTO_SUBMIT_CONFIDENCE = 0.5;
+import { useSheetDrag } from '../hooks/useSheetDrag';
 
 /**
  * VTOP's own login page.
@@ -46,13 +26,6 @@ const MIN_AUTO_SUBMIT_CONFIDENCE = 0.5;
  * portal itself, so a credential rejection offers it as a one-click check.
  */
 const VTOP_PORTAL_LOGIN_URL = 'https://vtopcc.vit.ac.in/vtop/login';
-
-// CAPTCHA OCR is only needed after the user opens login. Keep the large local
-// OCR/template-weight payload out of the initial and login-form chunks.
-async function readCaptcha(imageBase64: string) {
-  const { ocrCaptchaWithConfidence } = await import('../lib/vtop/ocrCaptcha');
-  return ocrCaptchaWithConfidence(imageBase64);
-}
 
 interface ExtensionSyncModalProps {
   isOpen: boolean;
@@ -106,6 +79,13 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
   // when they closed it.
   useBodyScrollLock(isOpen);
 
+  // Throw-to-dismiss, the same gesture the More sheet and the timetable share
+  // sheet already carry. It is inert while a sign-in is in flight: VTOP's
+  // CAPTCHA is single-use, so a sheet flung away mid-login would throw the
+  // armed image and the student's typed answer with it.
+  const loginBusy = syncing || captchaLoading || (autoLoginState !== 'idle' && autoLoginState !== 'manual');
+  const sheetDrag = useSheetDrag({ onDismiss: onClose, enabled: !loginBusy });
+
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
@@ -156,7 +136,7 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
       if (!res.captchaImageBase64) {
         setCaptchaError('VTOP CAPTCHA image could not be loaded. VTOP may be unavailable — try refreshing.');
       } else {
-        const result = await readCaptcha(res.captchaImageBase64);
+        const result = await readVtopCaptcha(res.captchaImageBase64);
         if (!mounted.current) return;
         if (result.text && result.confidence >= MIN_AUTO_SUBMIT_CONFIDENCE) {
           // Only a confident read is offered as a pre-filled answer; a shaky one
@@ -188,8 +168,11 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
   const sessionLostDuringSync = (): boolean => !isLiveSessionActive();
 
   /**
-   * Fully automatic login: session init → CAPTCHA OCR → submit → retry on failure.
-   * Falls back to manual CAPTCHA entry after MAX_AUTO_RETRIES failures.
+   * Fully automatic login: the arm → CAPTCHA read → submit sequence (and its
+   * retry/confidence policy) lives in `attemptAutoSignIn`, shared with a manual
+   * refresh — which signs in silently and never opens this sheet unless VTOP
+   * refuses the saved pair. This handler only turns that outcome into sheet
+   * state, and on success continues into the semester sync.
    */
   const handleAutoLogin = async () => {
     if (!regNo || !password) {
@@ -219,151 +202,107 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
     setSyncSuccess(false);
     setSyncComplete(false);
 
-    for (let attempt = 0; attempt <= MAX_AUTO_RETRIES; attempt++) {
+    const result = await attemptAutoSignIn({
+      regNo,
+      password,
+      onProgress: (progress) => {
+        if (!mounted.current) return;
+        setCaptchaBase64(progress.captchaBase64);
+        setAutoLoginState(progress.step);
+        setAutoStatusMsg(progress.message);
+      },
+    });
+
+    if (result.status !== 'ok') {
       if (!mounted.current) return;
-
-      try {
-        // 1. Initialize session + get CAPTCHA
-        setAutoLoginState('initializing');
-        setAutoStatusMsg(attempt === 0 ? 'Connecting to VTOP…' : `Retry ${attempt}/${MAX_AUTO_RETRIES} — fetching new CAPTCHA…`);
-        resetLiveClient();
-        const client = getLiveClient();
-        const res = await client.initializeSession();
-        if (!mounted.current) return;
-
-        if (!res.captchaImageBase64) {
-          setAutoLoginState('manual');
-          setAutoStatusMsg('');
-          setCaptchaBase64('');
+      setAutoLoginState('manual');
+      setAutoStatusMsg('');
+      setCaptchaBase64(result.captchaBase64);
+      switch (result.handover) {
+        case 'no-captcha':
           setCaptchaError('VTOP CAPTCHA unavailable — please enter manually.');
-          return;
-        }
-
-        setCaptchaBase64(res.captchaImageBase64);
-
-        // 2. OCR the CAPTCHA
-        setAutoLoginState('solving-captcha');
-        setAutoStatusMsg('Reading CAPTCHA…');
-        const ocrResult = await readCaptcha(res.captchaImageBase64);
-        if (!mounted.current) return;
-
-        if (!ocrResult.text) {
-          setAutoLoginState('manual');
-          setAutoStatusMsg('');
+          break;
+        case 'unreadable':
           setCaptchaText('');
           setCaptchaError('Could not read CAPTCHA automatically — please type it.');
-          return;
-        }
-
-        // A low-confidence read is a guess, and guessing costs the student a
-        // failed login on their real VTOP account. Leave the box empty instead
-        // and let the person who can see the image fill it in.
-        if (ocrResult.confidence < MIN_AUTO_SUBMIT_CONFIDENCE) {
-          setAutoLoginState('manual');
-          setAutoStatusMsg('');
+          break;
+        case 'low-confidence':
           setCaptchaText('');
           setCaptchaError('The CAPTCHA was too unclear to read safely — please type the 6 characters shown.');
-          return;
-        }
-
-        setCaptchaText(ocrResult.text);
-
-        // 3. Submit login
-        setAutoLoginState('submitting');
-        setAutoStatusMsg('Signing in…');
-        try {
-          await client.login(regNo, password, ocrResult.text);
-        } catch (loginErr) {
-          const code = isVtopError(loginErr) ? loginErr.code : null;
-          const msg = loginErr instanceof Error ? loginErr.message : String(loginErr);
-          // VTOP answers a wrong registration number or password with
-          // "Invalid Credentials". Re-arming a fresh CAPTCHA for that — as the
-          // old substring match on 'Invalid' did — burned three sessions and
-          // then told the student to retype a code that was never the problem.
-          if (code === 'LOGIN_FAILED') {
-            setAutoLoginState('manual');
-            setAutoStatusMsg('');
-            setCredentialRejected(true);
-            setSyncError(msg + stalePrefillHint(password));
-            // VTOP consumes a CAPTCHA on any login answer, including this one,
-            // so the image still on screen cannot be submitted again. Re-arm
-            // now — otherwise the student who fixes their password and hits
-            // sign in is answered "Invalid Captcha" for a code they read
-            // perfectly, and the credential problem hides behind it.
-            resetLiveClient();
-            void initLiveSession();
-            return;
-          }
-          // CAPTCHA/session failed — try again with a new CAPTCHA. Typed codes
-          // only: matching on the words in VTOP's message is how a credentials
-          // rejection used to be retried as a CAPTCHA problem, and the message
-          // now legitimately contains the word "CAPTCHA".
-          if (code === 'CAPTCHA_FAILED' || code === 'SESSION_EXPIRED') {
-            if (attempt < MAX_AUTO_RETRIES) {
-              setAutoLoginState('retrying');
-              setAutoStatusMsg(`CAPTCHA incorrect — retrying (${attempt + 1}/${MAX_AUTO_RETRIES})…`);
-              continue; // retry with fresh CAPTCHA
-            }
-            // Out of auto attempts — fall back to manual, but keep the reason
-            // VTOP gave on the last attempt. Saying only "failed after N
-            // retries" sent students off to retype a CAPTCHA that was never the
-            // problem, when VTOP had actually explained the real cause.
-            setAutoLoginState('manual');
-            setAutoStatusMsg('');
-            setSyncError(`Auto-login could not get past VTOP's CAPTCHA — last attempt: ${msg}`);
-            return;
-          }
-          // Non-CAPTCHA error (network, etc.) — don't retry
-          throw loginErr;
-        }
-
-        // 4. Login succeeded. LMS is intentionally NOT touched here — Moodle
-        // uses a separate account and is synced from Settings → LMS Account.
-        if (!mounted.current) return;
-        setAutoLoginState('syncing');
-        setAutoStatusMsg('Login successful — syncing your semester data…');
-
-        const semestersList = await client.getSemesters();
-        if (!mounted.current) return;
-        setSemesters(semestersList);
-        const semId = pickSemesterId(selectedSemester, semestersList);
-        setSelectedSemester(semId);
-
-        const results = await syncSemesterData(client, semId, semestersList);
-        if (!mounted.current) return;
-
-        setSyncResults(results);
-        const failed = results.filter((r) => !r.ok);
-        const sessionGone = sessionLostDuringSync();
-        setSyncSuccess(!sessionGone && failed.length === 0);
-        setSyncComplete(true);
-        setAutoLoginState('idle');
-        setAutoStatusMsg('');
-        setLastSyncTime(Date.now());
-        if (onDataSynced) await onDataSynced();
-        if (sessionGone) {
-          // Keep the modal open and re-arm: the student needs a fresh CAPTCHA
-          // to sign in again, and closing here would hide the incomplete sync.
-          setAutoLoginState('manual');
-          setSyncError(SESSION_LOST_MID_SYNC);
+          break;
+        case 'rejected':
+          setCredentialRejected(true);
+          setSyncError(result.message + stalePrefillHint(password));
+          // VTOP consumes a CAPTCHA on any login answer, including this one,
+          // so the image still on screen cannot be submitted again. Re-arm
+          // now — otherwise the student who fixes their password and hits
+          // sign in is answered "Invalid Captcha" for a code they read
+          // perfectly, and the credential problem hides behind it.
           resetLiveClient();
           void initLiveSession();
-          return;
-        }
-        // Sign-in succeeded — always close. Partial dataset failures are
-        // surfaced as a toast on the dashboard, not by keeping this open.
-        onClose();
-        return;
+          break;
+        case 'captcha-exhausted':
+          // Out of auto attempts — hand over, but keep the reason VTOP gave on
+          // the last attempt. Saying only "failed after N retries" sent students
+          // off to retype a CAPTCHA that was never the problem.
+          setSyncError(`Auto-login could not get past VTOP's CAPTCHA — last attempt: ${result.message}`);
+          break;
+        case 'unavailable':
+          setSyncError(
+            result.code
+              ? result.message
+              : `VTOP error: ${humanErrorCopy(result.error ?? result.message, 'VTOP could not be reached. Please sign in normally.')}`,
+          );
+          break;
+      }
+      return;
+    }
 
-      } catch (err) {
-        if (!mounted.current) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        // Network/session error — don't retry CAPTCHA, just report
+    // Login succeeded. LMS is intentionally NOT touched here — Moodle uses a
+    // separate account and is synced from Settings → LMS Account.
+    setAutoLoginState('syncing');
+    setAutoStatusMsg('Login successful — syncing your semester data…');
+    try {
+      const client = getLiveClient();
+      const semestersList = await client.getSemesters();
+      if (!mounted.current) return;
+      setSemesters(semestersList);
+      const semId = pickSemesterId(selectedSemester, semestersList);
+      setSelectedSemester(semId);
+
+      const results = await syncSemesterData(client, semId, semestersList);
+      if (!mounted.current) return;
+
+      setSyncResults(results);
+      const failed = results.filter((r) => !r.ok);
+      const sessionGone = sessionLostDuringSync();
+      setSyncSuccess(!sessionGone && failed.length === 0);
+      setSyncComplete(true);
+      setAutoLoginState('idle');
+      setAutoStatusMsg('');
+      setLastSyncTime(Date.now());
+      if (onDataSynced) await onDataSynced();
+      if (sessionGone) {
+        // Keep the modal open and re-arm: the student needs a fresh CAPTCHA
+        // to sign in again, and closing here would hide the incomplete sync.
         setAutoLoginState('manual');
-        setAutoStatusMsg('');
-        setSyncError(isVtopError(err) ? err.message : `VTOP error: ${humanErrorCopy(err, 'VTOP could not be reached. Please sign in normally.')}`);
+        setSyncError(SESSION_LOST_MID_SYNC);
+        resetLiveClient();
+        void initLiveSession();
         return;
       }
+      // Sign-in succeeded — always close. Partial dataset failures are
+      // surfaced as a toast on the dashboard, not by keeping this open.
+      onClose();
+    } catch (err) {
+      if (!mounted.current) return;
+      setAutoLoginState('manual');
+      setAutoStatusMsg('');
+      setSyncError(
+        isVtopError(err)
+          ? err.message
+          : `VTOP error: ${humanErrorCopy(err, 'VTOP could not be reached. Please sign in normally.')}`,
+      );
     }
   };
 
@@ -525,85 +464,76 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
   if (!isOpen) return null;
 
   return (
-    <div className="ultracc-login-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-50 backdrop-blur-md animate-fadeIn">
+    <div className="uc-scrim ultracc-login-overlay fixed inset-0 flex items-center justify-center p-3 sm:p-6">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="vtop-login-title"
         aria-describedby="vtop-login-security-note"
-        className="w-full max-w-2xl bg-white border border-zinc-200 rounded-3xl shadow-2xl overflow-hidden max-h-[92dvh] overflow-y-auto"
+        className="uc-plate uc-sheet"
+        style={sheetDrag.offset ? { transform: `translateY(${sheetDrag.offset}px)`, transition: 'none' } : undefined}
       >
-
-        {/* Header */}
-        <div className="p-6 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl border bg-emerald-500/10 border-emerald-500/30 text-emerald-600">
-              <ShieldCheck className="h-6 w-6" />
-            </div>
-            <div>
-              <h3 id="vtop-login-title" className="text-lg font-extrabold text-zinc-900 tracking-tight">VTOP Login</h3>
-              <p className="text-xs text-zinc-500 font-medium">
-                UltraCC secure gateway → vtopcc.vit.ac.in
-              </p>
-            </div>
+        <header className="uc-plate-head uc-sheet-head is-draggable" {...sheetDrag.handlers}>
+          <div className="uc-dir-id">
+            <span className="uc-cap"><ShieldCheck className="uc-dir-inline" aria-hidden="true" />VTOP gateway</span>
+            <h3 id="vtop-login-title" className="uc-dir-name">Sign in to VTOP</h3>
+            <p className="uc-note">Your campus account, read by UltraCC on this device.</p>
           </div>
-          <button
-            ref={closeBtnRef}
-            onClick={onClose}
-            aria-label="Close login dialog"
-            className="p-2 text-zinc-500 hover:text-zinc-900 rounded-xl hover:bg-zinc-100"
+          <div className="uc-dir-rail">
+            <button
+              type="button"
+              ref={closeBtnRef}
+              onClick={onClose}
+              aria-label="Close login dialog"
+              className="uc-dir-ico"
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        <div className="uc-sheet-body">
+          <p id="vtop-login-security-note" className="uc-note-row uc-note-row--warn">
+            <AlertTriangle aria-hidden="true" />
+            <span>
+              <b>Security notice.</b> Your VTOP credentials go over HTTPS only to <b>vtopcc.vit.ac.in</b>, and
+              UltraCC never stores or logs them. A login you save in Settings stays on this device, and the
+              CAPTCHA never leaves your browser.
+            </span>
+          </p>
+
+          <form
+            onSubmit={(e) => { e.preventDefault(); void (autoLoginState === 'manual' ? handleLogin(e) : handleAutoLogin()); }}
+            className="uc-dir-form"
           >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-5 text-xs text-zinc-900">
-
-          {/* Privacy Notice */}
-          <div id="vtop-login-security-note" className="p-4 bg-amber-50 border border-amber-500/30 rounded-2xl space-y-1.5">
-            <p className="flex items-center gap-1.5 font-extrabold text-amber-700 text-[11px] uppercase tracking-wider">
-              <AlertTriangle className="h-3.5 w-3.5" /> Security Notice
-            </p>
-            <p className="text-[11px] text-amber-700/70 leading-relaxed">
-              Your VTOP credentials are transmitted over <strong>HTTPS</strong> only to <strong>vtopcc.vit.ac.in</strong> to log you in.
-            </p>
-            <p className="text-[11px] text-amber-700/70 leading-relaxed">
-              Credentials are <strong>never stored or logged by UltraCC</strong>. If you save your login in Settings it stays on this device only. The CAPTCHA never leaves your browser.
-            </p>
-          </div>
-
-          {/* Credentials Form */}
-          <form onSubmit={(e) => { e.preventDefault(); void (autoLoginState === 'manual' ? handleLogin(e) : handleAutoLogin()); }} className="space-y-4 bg-zinc-50 p-5 rounded-2xl border border-zinc-200">
-            <h4 className="font-extrabold text-zinc-900 text-xs flex items-center gap-2">
-              <KeyRound className="h-4 w-4 acc-text" />
-              <span>VIT Chennai VTOP Authentication</span>
+            <h4 className="uc-dir-subhead">
+              <KeyRound className="uc-dir-inline" aria-hidden="true" />VIT Chennai VTOP authentication
             </h4>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="vtop-regno" className="block text-[11px] text-zinc-500 font-medium mb-1">Registration Number or VTOP username</label>
+            <div className="uc-login-grid">
+              <label className="uc-dir-field">
+                <span>Registration number or VTOP username</span>
                 <input
                   id="vtop-regno"
                   type="text"
                   value={regNo}
-                  // Keep the student's typing in the field. VTOP's own login
-                  // box uppercases as you type and the gateway applies the same
-                  // rule before submitting, so nothing is lost by leaving it
-                  // readable here.
+                  // Keep the student's typing in the field. VTOP's own login box
+                  // uppercases as you type and the gateway applies the same rule
+                  // before submitting, so nothing is lost by leaving it readable.
                   onChange={(e) => setRegNo(e.target.value)}
-                  placeholder="23BCE1082"
+                  placeholder="23BCE0000"
                   required
                   autoComplete="username"
                   spellCheck={false}
                   aria-describedby={syncError ? 'vtop-login-error' : undefined}
-                  className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none"
+                  className="uc-dir-input uc-num"
                 />
-              </div>
+              </label>
 
-              <div>
-                <label htmlFor="vtop-password" className="block text-[11px] text-zinc-500 font-medium mb-1">VTOP Password</label>
-                <div className="relative">
+              <div className="uc-dir-field">
+                <label htmlFor="vtop-password">VTOP password</label>
+                <div className="uc-login-pass">
                   <input
                     id="vtop-password"
                     type={showPassword ? 'text' : 'password'}
@@ -613,35 +543,32 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
                     required
                     autoComplete="current-password"
                     aria-describedby={syncError ? 'vtop-login-error' : undefined}
-                    className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none pr-10"
+                    className="uc-dir-input uc-num"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-900"
+                    className="uc-dir-ico"
                     title={showPassword ? 'Hide password' : 'Show password'}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     aria-pressed={showPassword}
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Semester — selection is saved and reused on the next login */}
+            {/* Semester — the selection is saved and reused on the next login. */}
             {semesters.length > 0 && (
-              <div>
-                <label className="block text-[11px] text-zinc-500 font-medium mb-1 flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5 acc-text" />
-                  <span>{syncComplete ? 'Change Semester (refetches data)' : 'Academic Semester'}</span>
-                </label>
-                <div className="flex items-center gap-2">
+              <div className="uc-dir-field">
+                <span>{syncComplete ? 'Change semester (refetches data)' : 'Academic semester'}</span>
+                <div className="uc-login-pass">
                   <select
                     value={selectedSemester}
                     onChange={(e) => handleSemesterChange(e.target.value)}
                     disabled={syncing || switchingSemester}
-                    className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+                    className="uc-dir-select"
                   >
                     {semesters.map((s) => (
                       <option key={s.id} value={s.id}>{s.name} {s.isCurrent ? '(Active)' : ''}</option>
@@ -652,70 +579,58 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
                     onClick={() => handleSemesterChange(selectedSemester)}
                     disabled={syncing || switchingSemester}
                     aria-label="Re-sync this semester"
-                    className="p-2.5 text-zinc-500 hover:text-zinc-900 bg-white border border-zinc-200 rounded-xl disabled:opacity-40 shrink-0"
+                    className="uc-dir-ico"
                     title="Re-sync this semester"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 ${switchingSemester ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={switchingSemester ? 'spin' : ''} aria-hidden="true" />
                   </button>
                 </div>
                 {switchingSemester && (
-                  <p className="mt-1.5 text-[10px] text-blue-700 flex items-center gap-1">
-                    <RefreshCw className="h-3 w-3 animate-spin" /> Refetching attendance, timetable, marks, exams &amp; OD for the new semester…
+                  <p className="uc-dir-sub" role="status" aria-live="polite">
+                    Refetching attendance, timetable, marks, exams &amp; OD for the new semester…
                   </p>
                 )}
-                <p className="mt-1 text-[10px] text-zinc-500">Your selection is saved and reused on your next login.</p>
+                <p className="uc-dir-sub">Your selection is saved and reused on your next login.</p>
               </div>
             )}
 
-            {/* CAPTCHA — hidden by default, only shown when auto-login fails */}
+            {/* CAPTCHA — only shown once the automatic read has been handed over. */}
             {autoLoginState === 'manual' && (
-              <div className="p-4 bg-white rounded-xl border border-zinc-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-extrabold text-zinc-900 uppercase tracking-wider">
-                    VTOP CAPTCHA
-                  </span>
-                  <span className="text-[10px] font-mono text-amber-700 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                    Manual fallback — auto-CAPTCHA failed
-                  </span>
+              <div className="uc-login-captcha">
+                <div className="uc-login-captcha-head">
+                  <span className="uc-cap">VTOP CAPTCHA</span>
+                  <span className="uc-dir-tag is-warn">Auto-read handed over</span>
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center space-x-3">
-                    {captchaLoading ? (
-                      <div className="h-16 w-64 bg-zinc-100 rounded border border-zinc-200 animate-pulse" />
-                    ) : captchaBase64 ? (
-                      <a
-                        href={captchaBase64}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Open the CAPTCHA full-size in a new tab"
-                        className="shrink-0 group"
-                      >
-                        <img
-                          src={captchaBase64}
-                          alt="VTOP CAPTCHA — click to enlarge"
-                          className="h-16 w-auto rounded border border-zinc-200 bg-white p-1 group-hover:ring-2 group-hover:ring-amber-300 cursor-zoom-in"
-                        />
-                      </a>
-                    ) : (
-                      <div className="h-16 px-8 bg-zinc-100 rounded border border-zinc-200 font-mono text-lg font-bold tracking-widest text-zinc-900 flex items-center justify-center">
-                        ····
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleRefreshCaptcha}
-                      disabled={captchaLoading}
-                      aria-label="Refresh CAPTCHA"
-                      className="p-2 text-zinc-500 hover:text-zinc-900 bg-white border border-zinc-200 rounded-lg disabled:opacity-40"
-                      title="Refresh CAPTCHA"
+                <div className="uc-login-captcha-row">
+                  {captchaLoading ? (
+                    <span className="uc-login-captcha-skel" aria-hidden="true" />
+                  ) : captchaBase64 ? (
+                    <a
+                      href={captchaBase64}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open the CAPTCHA full-size in a new tab"
+                      className="uc-login-captcha-img"
                     >
-                      <RefreshCw className={`h-3.5 w-3.5 ${captchaLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                  </div>
+                      <img src={captchaBase64} alt="VTOP CAPTCHA — click to enlarge" />
+                    </a>
+                  ) : (
+                    <span className="uc-login-captcha-img uc-login-captcha-blank uc-num" aria-hidden="true">····</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleRefreshCaptcha}
+                    disabled={captchaLoading}
+                    aria-label="Refresh CAPTCHA"
+                    className="uc-dir-ico"
+                    title="Refresh CAPTCHA"
+                  >
+                    <RefreshCw className={captchaLoading ? 'spin' : ''} aria-hidden="true" />
+                  </button>
 
-                  <div className="flex-1 max-w-xs">
-                    <label htmlFor="vtop-captcha" className="block text-[10px] text-zinc-500 mb-1">Type the 6 CAPTCHA characters:</label>
+                  <div className="uc-login-captcha-field">
+                    <label htmlFor="vtop-captcha">Type the 6 CAPTCHA characters</label>
                     <input
                       id="vtop-captcha"
                       type="text"
@@ -726,25 +641,24 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
                       autoCapitalize="characters"
                       spellCheck={false}
                       maxLength={6}
-                      className="w-full bg-white border border-zinc-200 rounded-xl px-3 py-2 text-sm text-center font-mono font-bold text-amber-700 focus:border-amber-400 focus:outline-none tracking-widest"
+                      className="uc-dir-input uc-login-captcha-input uc-num"
                     />
                   </div>
                 </div>
 
                 {captchaError && (
-                  <p role="alert" className="text-[10px] text-rose-600 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" /> {captchaError}
+                  <p role="alert" className="uc-login-alert">
+                    <AlertCircle aria-hidden="true" /><span>{captchaError}</span>
                   </p>
                 )}
               </div>
             )}
 
             {syncError && (
-              <div id="vtop-login-error" role="alert" className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-700 text-xs space-y-2">
-                <div className="flex items-start space-x-2">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>{syncError}</span>
-                </div>
+              <div id="vtop-login-error" role="alert" className="uc-login-error">
+                <p className="uc-login-alert">
+                  <AlertCircle aria-hidden="true" /><span>{syncError}</span>
+                </p>
 
                 {/* A credential rejection is answered by VTOP, not by this form:
                     the gateway posts exactly the four fields VTOP's own login
@@ -752,24 +666,17 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
                     accepted the CAPTCHA and refused the login id / password
                     pair. The only place that can be checked is the portal. */}
                 {credentialRejected && (
-                  <div className="pl-6 space-y-1.5 text-[10px] text-rose-700/80 leading-relaxed">
+                  <div className="uc-login-error-help">
                     <p>
-                      VTOP takes either your registration number or the custom login ID you set on
-                      the portal — exactly as it is stored there. Retyping the same pair here will
-                      get the same answer.
+                      VTOP takes either your registration number or the custom login ID you set on the portal —
+                      exactly as it is stored there. Retyping the same pair here will get the same answer.
                     </p>
-                    <a
-                      href={VTOP_PORTAL_LOGIN_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-bold text-rose-700 underline underline-offset-2 hover:text-rose-900"
-                    >
+                    <a href={VTOP_PORTAL_LOGIN_URL} target="_blank" rel="noopener noreferrer">
                       Sign in at vtopcc.vit.ac.in to check this pair ↗
                     </a>
                     <p>
-                      If the portal signs you in with the same login ID and password, come straight
-                      back and try again here — and use “Forgot Password” / “Forgot LoginId” on that
-                      page if it does not.
+                      If the portal signs you in with the same login ID and password, come straight back and try
+                      again here — and use “Forgot Password” / “Forgot LoginId” on that page if it does not.
                     </p>
                   </div>
                 )}
@@ -777,77 +684,71 @@ export const ExtensionSyncModal: React.FC<ExtensionSyncModalProps> = ({ isOpen, 
             )}
 
             {syncSuccess && syncResults && syncResults.every((r) => r.ok) && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-700 text-xs space-y-1">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="h-4 w-4 shrink-0" />
-                  <span>Real VTOP data synced. Your dashboard is up to date.</span>
-                </div>
-              </div>
+              <p className="uc-note-row uc-note-row--good">
+                <CheckCircle aria-hidden="true" />
+                <span>Real VTOP data synced. Your dashboard is up to date.</span>
+              </p>
             )}
 
-            {/* Per-dataset sync results — failed datasets are NEVER silent */}
+            {/* Per-dataset sync results — a failed dataset is never silent. */}
             {syncResults && syncResults.some((r) => !r.ok) && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-700 text-xs space-y-1.5">
-                <p className="font-extrabold text-amber-700 flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5" /> Some data could not be fetched
+              <div className="uc-login-error is-warn">
+                <p className="uc-login-alert is-warn">
+                  <AlertTriangle aria-hidden="true" /><span>Some data could not be fetched</span>
                 </p>
-                <ul className="space-y-0.5">
+                <ul className="uc-login-failed">
                   {syncResults.filter((r) => !r.ok).map((r) => (
-                    <li key={r.key} className="flex items-start gap-1.5">
-                      <span className="font-bold text-amber-700 shrink-0">{r.label}:</span>
-                      <span className="text-amber-700/80">{r.error || 'failed to fetch'}</span>
+                    <li key={r.key}>
+                      <b>{r.label}</b>
+                      <span>{r.error || 'failed to fetch'}</span>
                     </li>
                   ))}
                 </ul>
-                <p className="text-[10px] text-amber-700/60 pt-0.5">
-                  The synced datasets above are on your dashboard; the failed ones will show "not synced" until a re-sync succeeds.
+                <p className="uc-login-error-note">
+                  The datasets above are on your dashboard; the rest show as not synced until a re-sync succeeds.
                 </p>
               </div>
             )}
 
-            {/* Auto-login status indicator — announced politely to AT */}
+            {/* Auto-login progress — announced politely to assistive tech. */}
             {autoLoginState !== 'idle' && autoLoginState !== 'manual' && (
-              <div role="status" aria-live="polite" className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-700 text-xs flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 animate-spin shrink-0" aria-hidden="true" />
+              <p role="status" aria-live="polite" className="uc-login-progress">
+                <RefreshCw className="spin" aria-hidden="true" />
                 <span>{autoStatusMsg || 'Processing…'}</span>
-              </div>
+              </p>
             )}
 
             <button
               type="submit"
               disabled={syncing || captchaLoading || (autoLoginState !== 'idle' && autoLoginState !== 'manual')}
               aria-busy={syncing || (autoLoginState !== 'idle' && autoLoginState !== 'manual')}
-              className="w-full py-3 text-zinc-900 font-extrabold rounded-xl transition cursor-pointer flex items-center justify-center space-x-2 shadow-lg disabled:opacity-50 acc-bg acc-glow hover:opacity-90"
+              className="uc-dir-go acc-bg uc-login-submit"
             >
-              <RefreshCw className={`h-4 w-4 ${(syncing || (autoLoginState !== 'idle' && autoLoginState !== 'manual')) ? 'animate-spin' : ''}`} />
+              <RefreshCw className={(syncing || (autoLoginState !== 'idle' && autoLoginState !== 'manual')) ? 'spin' : ''} aria-hidden="true" />
               <span>
                 {autoLoginState === 'initializing' && 'Connecting to VTOP…'}
                 {autoLoginState === 'solving-captcha' && 'Reading CAPTCHA…'}
                 {autoLoginState === 'submitting' && 'Signing in…'}
                 {autoLoginState === 'retrying' && 'Retrying with new CAPTCHA…'}
                 {autoLoginState === 'syncing' && 'Syncing your data…'}
-                {autoLoginState === 'manual' && 'Sign In & Sync'}
-                {autoLoginState === 'idle' && (syncing ? 'Authenticating…' : 'Sign In')}
+                {autoLoginState === 'manual' && 'Sign in &amp; sync'}
+                {autoLoginState === 'idle' && (syncing ? 'Authenticating…' : 'Sign in')}
               </span>
             </button>
           </form>
-
-
-
-          {lastSyncTime && (
-            <p className="text-[10px] text-zinc-500 font-mono">Last local sync: {formatRelativeTime(lastSyncTime)}</p>
-          )}
         </div>
 
-        <div className="p-5 bg-white border-t border-zinc-200 flex justify-end">
+        <footer className="uc-plate-foot uc-sheet-foot">
+          <span>{lastSyncTime ? <><RefreshCw className="uc-dir-inline" aria-hidden="true" />Last local sync: <b className="uc-num">{formatRelativeTime(lastSyncTime)}</b></> : 'Nothing synced on this device yet.'}</span>
           <button
+            type="button"
             onClick={onClose}
             disabled={syncing || (autoLoginState !== 'idle' && autoLoginState !== 'manual')}
-            className="px-5 py-2.5 acc-bg text-zinc-900 font-extrabold rounded-2xl text-xs transition cursor-pointer disabled:opacity-50"
+            className="uc-dir-go"
           >
-            Close & Return to Dashboard
+            Close
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 /**
  * Navigation-rail layout contract.
  *
- * The rail is collapsible: an 82px icon column by default, 220px wide with
+ * The rail is collapsible: a 72px icon column by default, 232px wide with
  * labels when expanded, and it snaps back to compact when a destination is
  * chosen. That behaviour lives entirely in `src/index.css`, and it silently
  * regressed once before: two later media queries forced the rail to 228px and
@@ -98,24 +98,24 @@ describe('navigation rail layout contract', () => {
 
   it('keeps the collapsed rail compact and the expanded rail wide', () => {
     const collapsed = declarations('.meridian-rail', 'width', DESKTOP).map((entry) => entry.value);
-    expect(collapsed.at(-1)).toBe('82px!important');
+    expect(collapsed.at(-1)).toBe('72px!important');
     const expanded = declarations('.meridian-rail.expanded', 'width', DESKTOP).map((entry) => entry.value);
-    expect(expanded.at(-1)).toBe('220px!important');
+    expect(expanded.at(-1)).toBe('232px!important');
   });
 
   it('offsets the header and content by exactly the rail width, in both states', () => {
     const last = (selector: string, property: string) => declarations(selector, property, DESKTOP).at(-1)?.value;
 
     // Collapsed: the base layout reserves the compact rail.
-    expect(last('.meridian-header', 'margin-left')).toBe('82px!important');
-    expect(last('.ultracc-main', 'margin-left')).toBe('82px!important');
-    expect(last('.ultracc-main', 'width')).toBe('calc(100% - 82px)!important');
+    expect(last('.meridian-header', 'margin-left')).toBe('72px!important');
+    expect(last('.ultracc-main', 'margin-left')).toBe('72px!important');
+    expect(last('.ultracc-main', 'width')).toBe('calc(100% - 72px)!important');
 
     // Expanded: the rail grows and the reading area gives up the width.
-    expect(last('.meridian-rail.expanded+.meridian-header', 'margin-left')).toBe('220px!important');
-    expect(last('.ultracc-app:has(.meridian-rail.expanded) .ultracc-main', 'margin-left')).toBe('220px!important');
+    expect(last('.meridian-rail.expanded+.meridian-header', 'margin-left')).toBe('232px!important');
+    expect(last('.ultracc-app:has(.meridian-rail.expanded) .ultracc-main', 'margin-left')).toBe('232px!important');
     expect(last('.ultracc-app:has(.meridian-rail.expanded) .ultracc-main', 'width'))
-      .toBe('calc(100% - 220px)!important');
+      .toBe('calc(100% - 232px)!important');
   });
 
   it('shows labels only while expanded', () => {

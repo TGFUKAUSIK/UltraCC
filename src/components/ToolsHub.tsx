@@ -1,201 +1,156 @@
+/**
+ * Student tools — the index.
+ *
+ * This page is a directory, not a dashboard, so it is composed like the index of
+ * a reference book: one masthead, then labelled groups of destinations as
+ * compact hairline rows. The old page was a two-column wall of identically
+ * weighted cards over a cloud of nineteen corner chips — every destination the
+ * same size, no reading order, and no way to tell an academic record from an
+ * export button. Rows in a named group can be scanned with one thumb, and a
+ * group can grow a row without the layout changing shape.
+ *
+ * It reuses the board vocabulary the rest of the redesign is built on (.uc-marker,
+ * .uc-cap, .uc-plate) so a destination here looks like a destination everywhere
+ * else, and it talks about each one the way the rest of the app names it: the
+ * labels come from the same authoritative list the rail, the services menu and
+ * ⌘K read (see naming.test.ts).
+ */
 import React from 'react';
 import {
-  BookOpen, Clock, Sparkles,
-  FileText, Download, Calendar, AlertTriangle,
-  GraduationCap, Sliders, Bot, ChevronRight, MapPin,
+  ArrowLeftRight, Bed, BookMarked, BookOpen, BusFront,
+  CalendarCheck, CalendarDays, CalendarRange, Car, ChevronRight, ClipboardList,
+  Clock, DoorOpen, FlaskConical, GraduationCap, LayoutGrid, LibraryBig,
+  ListChecks, MapPinned, Printer, Ticket, UserRound, Users,
 } from 'lucide-react';
 import { isNavHidden } from '../lib/navVisibility';
 
-/* ── Tool Card ─────────────────────────────────────────────────────────────── */
+/* ── Destinations ──────────────────────────────────────────────────────────── */
 
-function ToolCard({ icon, title, description, color, onClick }: {
-  icon: React.ReactNode; title: string; description: string;
-  color: string; onClick: () => void;
+interface Destination {
+  tab: string;
+  title: string;
+  detail: string;
+  icon: React.ReactNode;
+}
+
+/**
+ * The record and the planning tools: everything a student opens to look at their
+ * own semester. Ordered the way the questions are asked — what am I attending,
+ * what did I score, what is coming — so a student who is only here for one of
+ * them finds it without reading the rest.
+ */
+const ACADEMIC_DESTINATIONS: Destination[] = [
+  { tab: 'academics', title: 'Attendance', detail: 'Weekly view, predictor and OD hours', icon: <CalendarCheck size={16} /> },
+  { tab: 'grades', title: 'Marks & Grades', detail: 'CGPA calculator, what-if and grade predictor', icon: <GraduationCap size={16} /> },
+  { tab: 'exams', title: 'Exam Schedule', detail: 'Dates, seat numbers and .ics export', icon: <ClipboardList size={16} /> },
+  { tab: 'timetable', title: 'Timetable', detail: 'Your week — image and PDF export', icon: <CalendarDays size={16} /> },
+  { tab: 'calendar', title: 'Academic Calendar', detail: 'Holidays, exam windows and .ics export', icon: <CalendarRange size={16} /> },
+  { tab: 'lms', title: 'Assignments & Courses', detail: 'Deadlines and course pages from LMS', icon: <Clock size={16} /> },
+  { tab: 'ffcs', title: 'FFCS', detail: 'Plan a semester and build the grid', icon: <ListChecks size={16} /> },
+];
+
+/**
+ * The campus itself and the life around it. Same row shape as Academics, so the
+ * page reads as one list with headings rather than two different widgets.
+ */
+const CAMPUS_DESTINATIONS: Destination[] = [
+  { tab: 'freeClassrooms', title: 'Rooms & Labs', detail: 'Free rooms and labs, period by period', icon: <DoorOpen size={16} /> },
+  { tab: 'campus-utils', title: 'Campus Facilities', detail: 'Printing and opt-in study groups', icon: <Printer size={16} /> },
+  { tab: 'library', title: 'Library', detail: 'Hours, seats and borrowing', icon: <LibraryBig size={16} /> },
+  { tab: 'hostel', title: 'Hostel', detail: 'Mess, laundry and hostel notices', icon: <Bed size={16} /> },
+  { tab: 'events', title: 'Events', detail: 'What’s on, on campus', icon: <Ticket size={16} /> },
+  { tab: 'transport', title: 'Transport', detail: 'Buses and shuttle timings', icon: <BusFront size={16} /> },
+  { tab: 'clubs', title: 'Student Communities', detail: 'Clubs, chapters and special teams', icon: <Users size={16} /> },
+  { tab: 'cabshare', title: 'Cab Share', detail: 'Find or offer a ride', icon: <Car size={16} /> },
+  { tab: 'campus', title: 'Campus Map', detail: 'Find any building on campus', icon: <MapPinned size={16} /> },
+];
+
+/**
+ * The rest of the app: study material, the advisor, and the student's own
+ * account. Named "More" because that is exactly what it is — the same word the
+ * phone's bottom bar uses for destinations it cannot hold.
+ */
+const MORE_DESTINATIONS: Destination[] = [
+  { tab: 'qbank', title: 'Question Bank', detail: 'Past exam papers by course', icon: <BookMarked size={16} /> },
+  { tab: 'ai-advisor', title: 'AI Advisor', detail: 'Ask about your own numbers', icon: <FlaskConical size={16} /> },
+  { tab: 'social', title: 'Timetable Compare', detail: 'Line your grid up with a friend’s', icon: <ArrowLeftRight size={16} /> },
+  { tab: 'my-info', title: 'Profile', detail: 'Your VTOP registration details', icon: <UserRound size={16} /> },
+  { tab: 'dashboard', title: 'Dashboard', detail: 'What’s on now and next', icon: <LayoutGrid size={16} /> },
+];
+
+/* ── Index ─────────────────────────────────────────────────────────────────── */
+
+/** One destination. The whole row is the target, icon to chevron. */
+function IndexRow({ icon, title, detail, onClick }: {
+  key?: React.Key; icon: React.ReactNode; title: string; detail: string; onClick: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-4 p-4 bg-zinc-50 border border-zinc-200 rounded-xl hover:border-zinc-200 transition cursor-pointer text-left group"
-    >
-      <div className={`p-2.5 rounded-xl ${color} shrink-0 group-hover:scale-110 transition-transform`}>
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-zinc-900">{title}</p>
-        <p className="text-xs text-zinc-500 mt-0.5">{description}</p>
-      </div>
-      <ChevronRight className="h-4 w-4 text-zinc-600 group-hover:text-zinc-900 transition shrink-0" />
+    <button type="button" className="uc-idx-row" onClick={onClick}>
+      <span className="uc-marker uc-marker--quiet uc-marker--sm" aria-hidden="true">{icon}</span>
+      <span className="uc-idx-main">
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </span>
+      <ChevronRight className="uc-idx-cue" size={15} aria-hidden="true" />
     </button>
   );
 }
 
-/* ── Main ──────────────────────────────────────────────────────────────────── */
+/** A labelled group. The count is the number of rows actually rendered. */
+function IndexGroup({ label, count, children }: {
+  label: string; count: number; children: React.ReactNode;
+}) {
+  return (
+    <section className="uc-plate uc-idx-group">
+      <div className="uc-plate-head">
+        <h2 className="uc-cap">{label}</h2>
+        <span className="uc-idx-count uc-num">{count}</span>
+      </div>
+      <div className="uc-idx">{children}</div>
+    </section>
+  );
+}
 
 interface ToolsHubProps {
   onNavigate: (tab: string) => void;
 }
 
 export const ToolsHub: React.FC<ToolsHubProps> = ({ onNavigate }) => {
+  // Every group is filtered through the one visibility flag, so withdrawing a
+  // feature is a single entry in navVisibility.ts and never an edit here.
+  const academics = ACADEMIC_DESTINATIONS.filter((item) => !isNavHidden(item.tab));
+  const campus = CAMPUS_DESTINATIONS.filter((item) => !isNavHidden(item.tab));
+  const more = MORE_DESTINATIONS.filter((item) => !isNavHidden(item.tab));
+  const showSyllabus = !isNavHidden('syllabus');
+
+  const row = (item: Destination) => (
+    <IndexRow key={item.tab} icon={item.icon} title={item.title} detail={item.detail} onClick={() => onNavigate(item.tab)} />
+  );
+
   return (
-    <div className="space-y-5 pb-12">
-      {/* Header */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div className="flex items-center space-x-3 mb-6">
-          <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-600">
-            <Sparkles className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-zinc-900 tracking-tight">Student tools</h3>
-            <p className="text-xs text-zinc-500 font-medium">Utilities and calculators for your academic life</p>
-          </div>
-        </div>
+    <div className="uc-index">
+      <header className="uc-index-mast">
+        <span className="uc-cap">Student tools</span>
+        <h1 className="uc-hero">All tools</h1>
+        <p className="uc-note">Attendance and marks first. Every other screen in UltraCC, grouped below.</p>
+      </header>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Academic Tools — one card per destination. The CGPA calculator,
-              GPA predictor, what-if simulator and relative grade predictor all
-              live as tabs inside Marks & Grades; three cards pointing at the
-              same route read as three broken links, so one canonical card
-              covers them. */}
-          <ToolCard
-            icon={<GraduationCap className="h-5 w-5 text-blue-600" />}
-            title="Marks, Grades & Predictors"
-            description="CGPA calculator, what-if simulator, grade predictor"
-            color="bg-blue-500/10 text-blue-600"
-            onClick={() => onNavigate('grades')}
-          />
+      <IndexGroup label="Academics" count={academics.length + (showSyllabus ? 1 : 0)}>
+        {academics.map(row)}
+        {/* Syllabus is withdrawn from navigation for now (see navVisibility.ts);
+            the route is unchanged, so this row is the only thing taken out. */}
+        {!isNavHidden('syllabus') && (
+          <IndexRow icon={<BookOpen size={16} />} title="Syllabus" detail="VTOP’s own file for each course" onClick={() => onNavigate('syllabus')} />
+        )}
+      </IndexGroup>
 
-          {/* Productivity Tools */}
-          <ToolCard
-            icon={<Clock className="h-5 w-5 text-amber-600" />}
-            title="Deadline Tracker"
-            description="Assignment and quiz deadlines from LMS"
-            color="bg-amber-500/10 text-amber-600"
-            onClick={() => onNavigate('lms')}
-          />
-          <ToolCard
-            icon={<AlertTriangle className="h-5 w-5 text-rose-600" />}
-            title="Attendance Warning"
-            description="Check courses at risk of debar"
-            color="bg-rose-500/10 text-rose-600"
-            onClick={() => onNavigate('academics')}
-          />
-          {/* Syllabus Viewer is withdrawn from navigation for now (see
-              src/lib/navVisibility.ts); the tab and its data path are unchanged,
-              so this card is the only thing taken out. */}
-          {!isNavHidden('syllabus') && (
-            <ToolCard
-              icon={<FileText className="h-5 w-5 text-cyan-600" />}
-              title="Syllabus Viewer"
-              description="VTOP’s own syllabus file for each of your courses"
-              color="bg-cyan-500/10 text-cyan-600"
-              onClick={() => onNavigate('syllabus')}
-            />
-          )}
-          <ToolCard
-            icon={<Calendar className="h-5 w-5 text-orange-600" />}
-            title="Academic Calendar"
-            description="View holidays, exams, and important dates"
-            color="bg-orange-500/10 text-orange-600"
-            onClick={() => onNavigate('calendar')}
-          />
+      <IndexGroup label="Campus & life" count={campus.length}>
+        {campus.map(row)}
+      </IndexGroup>
 
-          {/* Export Tools */}
-          <ToolCard
-            icon={<Download className="h-5 w-5 text-green-600" />}
-            title="Export Timetable"
-            description="Download timetable as image or PDF"
-            color="bg-green-500/10 text-green-600"
-            onClick={() => onNavigate('timetable')}
-          />
-          <ToolCard
-            icon={<Download className="h-5 w-5 text-green-600" />}
-            title="Export Exams"
-            description="Download exam schedule as .ics calendar"
-            color="bg-green-500/10 text-green-600"
-            onClick={() => onNavigate('exams')}
-          />
-          <ToolCard
-            icon={<Download className="h-5 w-5 text-green-600" />}
-            title="Export Calendar"
-            description="Download academic calendar as .ics"
-            color="bg-green-500/10 text-green-600"
-            onClick={() => onNavigate('calendar')}
-          />
-
-          {/* AI Tools */}
-          <ToolCard
-            icon={<Bot className="h-5 w-5 text-blue-600" />}
-            title="AI Advisor"
-            description="Get academic advice powered by AI"
-            color="bg-blue-500/10 text-blue-600"
-            onClick={() => onNavigate('ai-advisor')}
-          />
-          <ToolCard
-            icon={<Sliders className="h-5 w-5 text-indigo-600" />}
-            title="FFCS Planner"
-            description="Plan your courses and schedule"
-            color="bg-indigo-500/10 text-indigo-600"
-            onClick={() => onNavigate('ffcs')}
-          />
-          <ToolCard
-            icon={<BookOpen className="h-5 w-5 text-teal-600" />}
-            title="Free Classrooms"
-            description="Find empty rooms for self-study"
-            color="bg-teal-500/10 text-teal-600"
-            onClick={() => onNavigate('freeClassrooms')}
-          />
-          <ToolCard
-            icon={<FileText className="h-5 w-5 text-amber-600" />}
-            title="Question Paper Bank"
-            description="Past exam question papers archive"
-            color="bg-amber-500/10 text-amber-600"
-            onClick={() => onNavigate('qbank')}
-          />
-          <ToolCard
-            icon={<MapPin className="h-5 w-5 text-amber-600" />}
-            title="Campus Facilities"
-            description="Printing and opt-in study groups"
-            color="bg-amber-500/10 text-amber-600"
-            onClick={() => onNavigate('campus-utils')}
-          />
-        </div>
-      </div>
-
-      {/* Quick access */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <h4 className="text-sm font-bold text-zinc-900 mb-4">Quick Access</h4>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { label: 'Dashboard', tab: 'dashboard' },
-            { label: 'Attendance', tab: 'academics' },
-            { label: 'Grades & Marks', tab: 'grades' },
-            { label: 'Timetable', tab: 'timetable' },
-            { label: 'Syllabus', tab: 'syllabus' },
-            { label: 'Exams', tab: 'exams' },
-            { label: 'Calendar', tab: 'calendar' },
-            { label: 'My Info', tab: 'my-info' },
-            { label: 'LMS / Moodle', tab: 'lms' },
-            { label: 'Hostel & Life', tab: 'hostel' },
-            { label: 'Library', tab: 'library' },
-            { label: 'Transport', tab: 'transport' },
-            { label: 'Student Communities', tab: 'clubs' },
-            { label: 'Campus Map', tab: 'campus' },
-            { label: 'Campus Facilities', tab: 'campus-utils' },
-            { label: 'Cab Share', tab: 'cabshare' },
-            { label: 'Timetable Compare', tab: 'social' },
-            { label: 'FFCS Planner', tab: 'ffcs' },
-            { label: 'AI Advisor', tab: 'ai-advisor' },
-          ].filter((item) => !isNavHidden(item.tab)).map(item => (
-            <button
-              key={item.tab}
-              onClick={() => onNavigate(item.tab)}
-              className="px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-zinc-500 hover:text-zinc-900 hover:border-zinc-300 transition cursor-pointer"
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <IndexGroup label="More" count={more.length}>
+        {more.map(row)}
+      </IndexGroup>
     </div>
   );
 };

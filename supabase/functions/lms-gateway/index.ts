@@ -759,6 +759,11 @@ Deno.serve(async (req: Request) => {
         if (!validTargets.includes(dataTarget)) {
           return jsonResponse({ ok: false, action, error: `Invalid dataTarget: ${dataTarget}` }, 400, origin);
         }
+        // The request body is untrusted: the declared type is not a check.
+        // A fractional, negative or string course id must not reach a URL.
+        if (courseId !== undefined && (typeof courseId !== 'number' || !Number.isInteger(courseId) || courseId <= 0)) {
+          return jsonResponse({ ok: false, action, error: 'courseId must be a positive integer' }, 400, origin);
+        }
         let result: GatewayResponse;
         try {
           result = await handleFetchData(session, dataTarget, courseId);

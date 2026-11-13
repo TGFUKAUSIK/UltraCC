@@ -100,4 +100,52 @@ describe('FirstRunLanding', () => {
     expect(onModeChange).toHaveBeenCalledWith('minimal');
     expect(localStorage.getItem('ultracc.featureMode')).toBe('"minimal"');
   });
+
+  /**
+   * The three sections are a procedure, not a menu: the term list is empty
+   * until VTOP has answered, and the layout choice is meaningless before there
+   * is anything to lay out. Numbering them is the only place the app states
+   * that order, so the numerals have to stay in step with the markup.
+   */
+  it('numbers the three steps in the order they can be done', () => {
+    mount();
+    const steps = Array.from(host!.querySelectorAll('.uc-first-run-step'));
+    expect(steps).toHaveLength(3);
+    expect(host!.querySelector('ol.uc-first-run-steps')).not.toBeNull();
+    expect(steps.map((li) => (li.querySelector('.uc-first-run-step-num')?.textContent || '').trim()))
+      .toEqual(['1', '2', '3']);
+    expect(steps.map((li) => li.querySelector('h2')?.textContent?.trim()))
+      .toEqual(['Get started', 'Semester', 'Layout']);
+  });
+
+  it('keeps the numerals out of the screen reader’s way', () => {
+    mount();
+    // The list already carries the count; a read-out "1, 2, 3" before every
+    // heading is noise, so the gutter is decoration.
+    for (const num of host!.querySelectorAll('.uc-first-run-step-num')) {
+      expect(num.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  /**
+   * The numeral chip is filled with the accent wash, so an accent-coloured digit
+   * is accent text on an 8% tint of itself: --acc-600 measures 4.0:1 for rose on
+   * the light wash and 2.9:1 for blue on the 13% dark wash, and a 12px numeral is
+   * not large text. The ink is the one value that clears AA in every theme and
+   * every accent, which is also what the mode radios do.
+   */
+  it('writes the numerals in the theme ink, not the accent', () => {
+    mount();
+    for (const num of host!.querySelectorAll('.uc-first-run-step-num')) {
+      expect(num.className).toContain('text-zinc-900');
+      expect(num.className).not.toMatch(/acc-text/);
+    }
+  });
+
+  it('gives the phone-sized controls a thumb-height target', () => {
+    mount(SEMESTERS);
+    const login = buttons().find((b) => (b.textContent || '').includes('Login with VTOP'))!;
+    expect(login.className).toContain('min-h-[44px]');
+    expect(host!.querySelector('select')!.className).toContain('min-h-[44px]');
+  });
 });

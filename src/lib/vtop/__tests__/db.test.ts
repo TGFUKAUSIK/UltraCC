@@ -3,8 +3,8 @@ import { vtopDb } from '../../db/vtopDatabase';
 import { StudentProfile, AttendanceRecord } from '../types';
 
 const profile: StudentProfile = {
-  registrationNo: '23BCE1082',
-  name: 'Kausik',
+  registrationNo: '23BCE0000',
+  name: 'Aarav',
   program: 'B.Tech',
   branch: 'CSE',
   school: 'SCOPE',
@@ -40,16 +40,16 @@ describe('vtopDatabase (IndexedDB persistence)', () => {
       { profile, attendance, timetable: [], marks: [], exams: [], assignments: [], semesters: [] },
       'LIVE_VTOP',
       'CH2025261',
-      '23BCE1082'
+      '23BCE0000'
     );
 
     const cached = await vtopDb.getAllData();
     expect(cached).not.toBeNull();
-    expect(cached!.profile).toMatchObject({ registrationNo: '23BCE1082', name: 'Kausik' });
+    expect(cached!.profile).toMatchObject({ registrationNo: '23BCE0000', name: 'Aarav' });
     expect(cached!.attendance).toHaveLength(1);
     expect(cached!.metadata.syncSource).toBe('LIVE_VTOP');
     expect(cached!.metadata.selectedSemesterId).toBe('CH2025261');
-    expect(cached!.metadata.registrationNo).toBe('23BCE1082');
+    expect(cached!.metadata.registrationNo).toBe('23BCE0000');
     expect(cached!.metadata.lastSyncedAt).toBeGreaterThan(0);
   });
 

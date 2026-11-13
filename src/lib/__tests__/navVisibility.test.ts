@@ -94,12 +94,19 @@ describe('The Syllabus implementation stays in the build', () => {
 describe('Feature modes (minimal vs complete)', () => {
   // Complete mode surfaces every destination the services menu declares (its
   // source list is every non-withdrawn tab). Minimal mode collapses that to the
-  // daily essentials, keeping a clear path back to Settings for re-enabling.
+  // five destinations the mode promises — the Dashboard, Attendance, Marks &
+  // Grades, the proctor and Settings — keeping a clear path back to Settings to
+  // re-enable. The Dashboard is one of them because the phone tab bar lays its
+  // destinations out as a full-width row: a set of four left a bare column where
+  // the fifth belonged and read as a broken bar rather than a smaller app.
   const everyServiceTab = serviceGroups.flatMap((group) => group.items.map(([tab]) => tab));
   const destinationsFor = (mode: 'minimal' | 'complete') =>
     buildPaletteIndex({ timetable: [], attendance: [], exams: [], marks: [] }, mode)
       .filter((item) => item.category === 'Go to')
       .map((item) => item.tab);
+
+  /** The five the brief names, and the routes that carry them. */
+  const MINIMAL_FIVE = ['dashboard', 'academics', 'grades', 'faculty', 'settings'];
 
   it('complete mode keeps every destination the services menu offers', () => {
     for (const tab of everyServiceTab) {
@@ -107,14 +114,15 @@ describe('Feature modes (minimal vs complete)', () => {
     }
   });
 
-  it('minimal mode hides everything except the daily essentials', () => {
+  it('minimal mode hides everything except the five destinations', () => {
     for (const tab of everyServiceTab) {
       expect(isNavHiddenInMode(tab, 'minimal'), `minimal mode mis-handled "${tab}"`).toBe(!MINIMAL_TABS.has(tab));
     }
   });
 
-  it('minimal mode keeps the daily essentials a student needs', () => {
-    for (const tab of ['dashboard', 'timetable', 'academics', 'exams', 'grades', 'settings']) {
+  it('minimal mode keeps the Dashboard, Attendance, Marks & Grades, the proctor and Settings', () => {
+    expect([...MINIMAL_TABS].sort()).toEqual(['academics', 'dashboard', 'faculty', 'grades', 'settings']);
+    for (const tab of MINIMAL_FIVE) {
       expect(isNavHiddenInMode(tab, 'minimal'), `minimal mode hid "${tab}"`).toBe(false);
     }
   });
@@ -122,14 +130,17 @@ describe('Feature modes (minimal vs complete)', () => {
   it('minimal mode strips extras from ⌘K, complete restores them', () => {
     const minimal = destinationsFor('minimal');
     const complete = destinationsFor('complete');
-    expect(minimal).toContain('timetable');
-    expect(minimal).toContain('exams');
-    expect(minimal).not.toContain('ffcs');
-    expect(minimal).not.toContain('clubs');
-    expect(minimal).not.toContain('transport');
-    expect(complete).toContain('ffcs');
-    expect(complete).toContain('clubs');
-    expect(complete).toContain('transport');
+    // Settings is a sheet, not a route, so it is never a palette row; the four
+    // route destinations the mode keeps — the Dashboard among them — must all
+    // still be searchable.
+    for (const tab of ['dashboard', 'academics', 'grades', 'faculty']) expect(minimal).toContain(tab);
+    expect(minimal, 'Settings is a sheet, not a route, so it has no ⌘K row').not.toContain('settings');
+    // A minimal student cannot reach these by search any more, and complete
+    // mode must still offer every one of them.
+    for (const tab of ['timetable', 'exams', 'ffcs', 'clubs', 'transport']) {
+      expect(minimal, `minimal ⌘K still offered "${tab}"`).not.toContain(tab);
+      expect(complete, `complete ⌘K lost "${tab}"`).toContain(tab);
+    }
   });
 
   it('syllabus stays withdrawn in both modes', () => {

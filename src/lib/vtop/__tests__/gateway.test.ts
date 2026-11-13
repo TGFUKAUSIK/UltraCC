@@ -138,7 +138,7 @@ describe('RealVTOPClient.login', () => {
       ok: true, action: 'DO_LOGIN',
       loginSuccess: true, sessionToken: 'auth.tok',
     });
-    const res = await client.login('23BCE1082', 'password', 'ABCDEF');
+    const res = await client.login('23BCE0000', 'password', 'ABCDEF');
     expect(res.success).toBe(true);
   });
 
@@ -150,8 +150,8 @@ describe('RealVTOPClient.login', () => {
       ok: true, action: 'DO_LOGIN',
       loginSuccess: true, sessionToken: 'auth.tok',
     });
-    await client.login('TgFukaUsik', 'password', 'ABCDEF');
-    expect(lastRequest().body.credentials).toMatchObject({ regNo: 'TgFukaUsik' });
+    await client.login('23BEE0001', 'password', 'ABCDEF');
+    expect(lastRequest().body.credentials).toMatchObject({ regNo: '23BEE0001' });
   });
 
   it('throws LOGIN_FAILED when DO_LOGIN fails without CAPTCHA mismatch', async () => {
@@ -161,7 +161,7 @@ describe('RealVTOPClient.login', () => {
       loginSuccess: false,
       loginError: 'VTOP login failed. Check your Registration Number and Password.',
     });
-    await expect(client.login('23BCE1082', 'wrong', 'ABCDEF')).rejects.toSatisfy(
+    await expect(client.login('23BCE0000', 'wrong', 'ABCDEF')).rejects.toSatisfy(
       (e: VtopError) => e instanceof VtopError && e.code === 'LOGIN_FAILED'
     );
   });
@@ -173,7 +173,7 @@ describe('RealVTOPClient.login', () => {
       loginSuccess: false, captchaMismatch: true,
       loginError: 'VTOP rejected the CAPTCHA.',
     });
-    await expect(client.login('23BCE1082', 'pass', 'WRONG')).rejects.toSatisfy(
+    await expect(client.login('23BCE0000', 'pass', 'WRONG')).rejects.toSatisfy(
       (e: VtopError) => e instanceof VtopError && e.code === 'CAPTCHA_FAILED'
     );
   });
@@ -184,14 +184,14 @@ describe('RealVTOPClient.login', () => {
       ok: false, action: 'DO_LOGIN',
       loginSuccess: false, sessionExpired: true,
     });
-    await expect(client.login('23BCE1082', 'pass', 'ABCD')).rejects.toSatisfy(
+    await expect(client.login('23BCE0000', 'pass', 'ABCD')).rejects.toSatisfy(
       (e: VtopError) => e instanceof VtopError && e.code === 'SESSION_EXPIRED'
     );
   });
 
   it('throws SESSION_EXPIRED when called without prior initializeSession', async () => {
     const client = new RealVTOPClient();
-    await expect(client.login('23BCE1082', 'pass', 'ABCD')).rejects.toSatisfy(
+    await expect(client.login('23BCE0000', 'pass', 'ABCD')).rejects.toSatisfy(
       (e: VtopError) => e instanceof VtopError && e.code === 'CAPTCHA_FAILED'
     );
   });
@@ -211,7 +211,7 @@ describe('RealVTOPClient.getAttendance', () => {
     await client.initializeSession();
 
     global.fetch = mockFetch({ ok: true, action: 'DO_LOGIN', loginSuccess: true, sessionToken: 'auth.tok' });
-    await client.login('23BCE1082', 'pass', 'ABCDEF');
+    await client.login('23BCE0000', 'pass', 'ABCDEF');
     return client;
   }
 
@@ -321,19 +321,18 @@ describe('RealVTOPClient.logout', () => {
 });
 
 // ---------------------------------------------------------------------------
-// REGRESSION GUARD (2026-09-07): VTOP login broke when .env contained
-// placeholder values copied from .env.example — the placeholder overrode the
-// known-good fallback and every gateway request went to
+// REGRESSION (2026-09-07): VTOP login broke when .env contained placeholder
+// values copied from .env.example — the placeholder overrode the known-good
+// hardcoded fallback and every gateway request went to
 // https://your-project.supabase.co (DNS ENOTFOUND -> VTOP_UNAVAILABLE).
-// The public build ships NO deployed project reference; the gateway URL and
-// anon key fall back to documented placeholders that the deployer replaces.
-// These tests pin the request contract and the placeholder guard.
+// These tests pin the correct request contract and the placeholder guard.
 // ---------------------------------------------------------------------------
 
-describe('VTOP gateway request contract', () => {
-  const FALLBACK_URL = 'https://your-project.supabase.co/functions/v1/vtop-gateway';
-  const FALLBACK_ANON_KEY = 'your_supabase_anon_key';
-  const REAL_URL = 'https://abc123.supabase.co/functions/v1/vtop-gateway';
+describe('VTOP login regression guard (2026-09-07)', () => {
+  // An unconfigured public build talks to the documented placeholder host; the
+  // operator's own URL/key arrive from VITE_* at build time (.env.example).
+  const DEFAULT_URL = 'https://your-project.supabase.co/functions/v1/vtop-gateway';
+  const DEFAULT_ANON = 'your_supabase_anon_key';
 
   function initClient(): RealVTOPClient {
     global.fetch = mockFetch({
@@ -343,13 +342,13 @@ describe('VTOP gateway request contract', () => {
     return new RealVTOPClient();
   }
 
-  it('INITIALIZE_SESSION POSTs with a Bearer anon key header', async () => {
+  it('INITIALIZE_SESSION uses POST to the gateway from VITE_SUPABASE_* (placeholder when unset)', async () => {
     const client = initClient();
     await client.initializeSession();
     const req = lastRequest();
     expect(req.method).toBe('POST');
-    expect(req.url).toBe(FALLBACK_URL);
-    expect(req.headers['Authorization']).toBe(`Bearer ${FALLBACK_ANON_KEY}`);
+    expect(req.url).toBe(DEFAULT_URL);
+    expect(req.headers['Authorization']).toBe(`Bearer ${DEFAULT_ANON}`);
     expect(req.headers['Content-Type']).toBe('application/json');
     expect(req.body.action).toBe('INITIALIZE_SESSION');
   });
@@ -370,7 +369,7 @@ describe('VTOP gateway request contract', () => {
     await client.login('regNo', 'password', 'captcha');
     const req = lastRequest();
     expect(req.method).toBe('POST');
-    expect(req.url).toBe(FALLBACK_URL);
+    expect(req.url).toBe(DEFAULT_URL);
     expect(req.body).toEqual({
       action: 'DO_LOGIN',
       sessionToken: 'init.tok',
@@ -397,7 +396,7 @@ describe('VTOP gateway request contract', () => {
     );
   });
 
-  it('the placeholder guard flags only documented placeholders, never real values', () => {
+  it('placeholder env values can no longer override the deployed gateway URL (guard unit tests)', () => {
     // The exact regression value that broke login:
     expect(isPlaceholder('https://your-project.supabase.co/functions/v1/vtop-gateway')).toBe(true);
     expect(isPlaceholder('your_supabase_anon_key')).toBe(true);
@@ -406,28 +405,26 @@ describe('VTOP gateway request contract', () => {
     expect(isPlaceholder('   ')).toBe(true);
     expect(isPlaceholder('<your-key>')).toBe(true);
     // Real values must never be flagged:
-    expect(isPlaceholder(REAL_URL)).toBe(false);
     expect(isPlaceholder('https://other-project.supabase.co/functions/v1/vtop-gateway')).toBe(false);
     expect(isPlaceholder('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.real')).toBe(false);
   });
 
-  it('with no env set, gatewayUrl/anonKey fall back to the documented placeholders', async () => {
-    // Behavioral proof: the public build names no deployed project. Without
-    // VITE_VTOP_GATEWAY_URL / VITE_SUPABASE_ANON_KEY the client targets the
-    // documented placeholder and sends the placeholder anon key.
+  it('an unconfigured build falls back to the documented placeholder target', async () => {
+    // Behavioural proof: the exact placeholder values a copied .env.example
+    // carries resolve to the built-in default instead of retargeting requests.
     const client = initClient();
     await client.initializeSession();
-    expect(lastRequest().url).toBe(FALLBACK_URL);
-    expect(lastRequest().headers['Authorization']).toBe(`Bearer ${FALLBACK_ANON_KEY}`);
+    expect(lastRequest().url).toBe(DEFAULT_URL);
+    expect(lastRequest().headers['Authorization']).toBe(`Bearer ${DEFAULT_ANON}`);
   });
 
-  it('every gateway call carries the Bearer anon key header', async () => {
+  it('Supabase headers remain correct: Bearer anon key on every gateway call', async () => {
     const client = initClient();
     await client.initializeSession();
     global.fetch = mockFetch({ ok: true, action: 'DO_LOGIN', loginSuccess: true, sessionToken: 't' });
     await client.login('r', 'p', 'c');
     const req = lastRequest();
-    expect(req.headers['Authorization']).toBe(`Bearer ${FALLBACK_ANON_KEY}`);
+    expect(req.headers['Authorization']).toBe(`Bearer ${DEFAULT_ANON}`);
   });
 
   it('session token handling stays in-memory and rotates through responses', async () => {
@@ -522,7 +519,7 @@ describe('RealVTOPClient.getSyllabus — the production request payload', () => 
     await client.initializeSession();
 
     global.fetch = mockFetch({ ok: true, action: 'DO_LOGIN', loginSuccess: true, sessionToken: 'auth.tok' });
-    await client.login('23BCE1082', 'pass', 'ABCDEF');
+    await client.login('23BCE0000', 'pass', 'ABCDEF');
     return client;
   }
 

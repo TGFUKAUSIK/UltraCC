@@ -59,3 +59,26 @@ export function pendingWeightage(component?: AssessmentLike | null): number {
 export function pendingCourseWeightage(components: (AssessmentLike | null | undefined)[]): number {
   return components.reduce((sum, c) => sum + pendingWeightage(c), 0);
 }
+
+/** The three states the assignments UI can show. */
+export type AssignmentRowStatus = 'Pending' | 'Submitted' | 'Graded';
+
+/**
+ * VTOP's Digital Assignments status word mapped onto those three states.
+ *
+ * The old mapping tested `/grade/i` before asking whether the word was
+ * negated, so VTOP's own "Not Graded" became a blue "Graded" badge and the
+ * course header claimed "All in" for work nobody had marked. Negation is
+ * checked per phrase rather than as a blanket "contains not", because a row
+ * reading "Submitted, not graded" is still a submitted row.
+ */
+export function classifyAssignmentStatus(raw?: string | null): AssignmentRowStatus {
+  const s = (raw || '').toLowerCase();
+  const graded = /\b(graded|checked|evaluated|published|declared)\b/.test(s)
+    && !/\b(?:not|un)\s*(?:graded|checked|evaluated|published|declared)\b/.test(s);
+  const submitted = /\b(submitted|uploaded)\b/.test(s)
+    && !/\b(?:not|un)\s*(?:submitted|uploaded)\b/.test(s);
+  if (graded) return 'Graded';
+  if (submitted) return 'Submitted';
+  return 'Pending';
+}

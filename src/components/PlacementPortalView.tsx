@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { StudentProfile } from '../types';
-import { Briefcase, ExternalLink, Info, GraduationCap, Target, CheckCircle2, XCircle } from 'lucide-react';
+import { ExternalLink, Info, GraduationCap, Target, CheckCircle2, XCircle } from 'lucide-react';
 import { useCgpaPrivacy } from '../lib/cgpaPrivacy';
+import { gpaLabel } from '../utils/gradeModel';
 
 interface PlacementPortalViewProps {
   student: StudentProfile;
@@ -15,21 +16,18 @@ const PLACEMENT_TIERS = [
     ctcRange: '₹10+ LPA (Up to ₹50+ LPA)',
     typicalCgpa: 8.5,
     description: 'Tier-1 tech giants, product firms & fintech (Google, Microsoft, Amazon, DE Shaw, PayPal, Cisco).',
-    color: 'border-purple-500/30 bg-purple-500/10 text-purple-600',
   },
   {
     tier: 'Dream',
     ctcRange: '₹6 – 10 LPA',
     typicalCgpa: 7.5,
     description: 'High-growth tech product & core engineering firms (Deloitte, Samsung, Oracle, Optum, Schneider).',
-    color: 'border-blue-500/30 bg-blue-500/10 text-blue-600',
   },
   {
     tier: 'Regular / Mass',
     ctcRange: '₹3.5 – 6 LPA',
     typicalCgpa: 6.0,
     description: 'IT consulting, enterprise services & analytics (TCS, Infosys, Wipro, Cognizant, Accenture).',
-    color: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600',
   },
 ];
 
@@ -55,90 +53,63 @@ export const PlacementPortalView: React.FC<PlacementPortalViewProps> = ({ studen
   const status = estimateEligibility(simulatedCgpa);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header Banner Bento Card */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-1">
-              Campus Placement Matrix
-            </div>
-            <h2 className="text-2xl font-extrabold text-zinc-900 flex items-center gap-2 tracking-tight">
-              <Briefcase className="h-6 w-6 text-purple-600" />
-              VIT Placements &amp; Readiness
-            </h2>
-            <p className="text-sm text-zinc-500 mt-1 font-medium">
-              Eligibility cut-offs, dream tier bands &amp; community B.Tech 2026 drive tracker.
-            </p>
-            <p className="text-[11px] text-zinc-500 mt-2 flex items-start gap-1.5 font-medium">
-              <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-zinc-600" />
-              Placement drives are conducted centrally by the VIT Career Development Centre (CDC) across Vellore, Chennai, AP, and Bhopal.
-            </p>
+    <div className="uc-index pb-12">
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">Campus placement matrix</span>
+            <h2 className="uc-dir-name">VIT placements &amp; readiness</h2>
+            <p className="uc-note">Eligibility cut-offs, dream tier bands &amp; the community B.Tech 2026 drive tracker.</p>
           </div>
-          <a
-            href={TRACKER_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-purple-600 hover:bg-purple-500 text-zinc-900 rounded-2xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-purple-900/30 shrink-0 self-start md:self-auto"
-          >
-            Live 2026 Drive Tracker
-            <ExternalLink className="h-4 w-4" />
-          </a>
+          <div className="uc-dir-rail">
+            <a href={TRACKER_URL} target="_blank" rel="noopener noreferrer" className="uc-dir-go acc-bg">
+              Live 2026 drive tracker
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </a>
+          </div>
         </div>
-      </div>
-
-      {/* Readiness Snapshot */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2 mb-4">
-          <GraduationCap className="h-4 w-4 text-purple-600" />
-          Your Academic Profile Snapshot
-        </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="bg-zinc-50 px-5 py-4 rounded-2xl border border-zinc-200">
-            <p className="text-zinc-500 text-[10px] uppercase font-extrabold">Your CGPA</p>
-            <p className="text-2xl font-black text-zinc-900 mt-1">
-              {cgpaAvailable ? (cgpaHidden ? '••••' : cgpa.toFixed(2)) : <span className="text-zinc-500 text-base">Not synced</span>}
-            </p>
-            {!cgpaAvailable && (
-              <p className="text-[10px] text-zinc-500 mt-1">Sync live VTOP data to populate</p>
-            )}
+        <div className="uc-dir-detail">
+          <div className="uc-note-row">
+            <Info aria-hidden="true" />
+            <span>Placement drives are conducted centrally by the VIT Career Development Centre (CDC) across Vellore, Chennai, AP, and Bhopal.</span>
           </div>
-          <div className="bg-zinc-50 px-5 py-4 rounded-2xl border border-zinc-200">
-            <p className="text-zinc-500 text-[10px] uppercase font-extrabold">Programme</p>
+        </div>
+      </section>
+
+      <section className="uc-plate">
+        <div className="uc-plate-head"><GraduationCap aria-hidden="true" /><span>Your academic profile snapshot</span></div>
+        <div className="uc-place-facts">
+          <div className="uc-place-fact">
+            <p>Your CGPA</p>
+            <b className="uc-num">{cgpaAvailable ? (cgpaHidden ? '••••' : gpaLabel(cgpa)) : 'Not synced'}</b>
+            {!cgpaAvailable && <small>Sync live VTOP data to populate</small>}
+          </div>
+          <div className="uc-place-fact">
+            <p>Programme</p>
             {/* Was `student.branch || 'B.Tech'` — a hardcoded degree shown even
                 when VTOP never said it. Programme and branch are separate rows
                 in VTOP and are now joined only when actually synced. */}
-            <p className="text-sm font-black text-zinc-900 mt-2 truncate">
-              {[student.program, student.branch].filter(Boolean).join(' · ') || 'Not synced from VTOP'}
-            </p>
+            <b>{[student.program, student.branch].filter(Boolean).join(' · ') || 'Not synced from VTOP'}</b>
           </div>
-          <div className="bg-zinc-50 px-5 py-4 rounded-2xl border border-zinc-200">
-            <p className="text-zinc-500 text-[10px] uppercase font-extrabold">Semester</p>
-            <p className="text-sm font-black text-zinc-900 mt-2">Semester {student.semester || '—'}</p>
+          <div className="uc-place-fact">
+            <p>Semester</p>
+            {/* semester is a number; 0/absent means VTOP never said — the same
+                rule MyInfoView uses, rather than printing "Semester —". */}
+            <b>{student.semester > 0 ? `Semester ${student.semester}` : 'Not synced from VTOP'}</b>
           </div>
-          <div className="bg-zinc-50 px-5 py-4 rounded-2xl border border-zinc-200">
-            <p className="text-zinc-500 text-[10px] uppercase font-extrabold">Campus</p>
-            <p className="text-sm font-black text-emerald-600 mt-2">VIT Chennai (CDC Central)</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Interactive Eligibility Estimator */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-        <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-600">
-            <Target className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-zinc-900 tracking-tight">Placement Company Eligibility Calculator</h3>
-            <p className="text-xs text-zinc-500 font-medium">Estimate company shortlisting rate across CGPA cut-off thresholds</p>
+          <div className="uc-place-fact">
+            <p>Campus</p>
+            <b className="is-good">VIT Chennai (CDC Central)</b>
           </div>
         </div>
+      </section>
 
-        <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <span className="text-xs font-bold text-zinc-900">Simulate CGPA:</span>
-            <span className="font-mono text-xl font-black text-blue-600">{simulatedCgpa.toFixed(2)} CGPA</span>
+      <section className="uc-plate">
+        <div className="uc-plate-head"><Target aria-hidden="true" /><span>Placement company eligibility calculator</span></div>
+        <div className="uc-place-sim">
+          <div className="uc-place-sim-head">
+            <span>Simulate CGPA</span>
+            <b className="uc-num">{gpaLabel(simulatedCgpa)} CGPA</b>
           </div>
           <input
             type="range"
@@ -148,61 +119,40 @@ export const PlacementPortalView: React.FC<PlacementPortalViewProps> = ({ studen
             step={0.05}
             value={simulatedCgpa}
             onChange={(e) => setSimulatedCgpa(parseFloat(e.target.value))}
-            className="w-full h-2 bg-zinc-100 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            className="uc-place-range"
           />
-          <div className="flex justify-between text-[10px] text-zinc-600 font-mono">
-            <span>5.0</span>
-            <span>6.0</span>
-            <span>7.0</span>
-            <span>8.0</span>
-            <span>9.0</span>
-            <span>10.0</span>
+          <div className="uc-place-scale uc-num">
+            <span>5.0</span><span>6.0</span><span>7.0</span><span>8.0</span><span>9.0</span><span>10.0</span>
           </div>
-
-          <div className="pt-3 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold text-zinc-900">{status.level}</p>
-              <p className="text-[11px] text-zinc-500 mt-0.5">Estimated ~{status.pct}% of recruiting companies permit test registration</p>
-            </div>
-            <div className="w-full sm:w-48 h-3 bg-white rounded-full overflow-hidden border border-zinc-200">
-              <div
-                className="h-full bg-gradient-to-r from-blue-600 to-purple-600 rounded-full transition-all duration-300"
-                style={{ width: `${status.pct}%` }}
-              />
-            </div>
-          </div>
+          <p className="uc-place-status">{status.level}</p>
+          <p className="uc-place-hint">Estimated ~{status.pct}% of recruiting companies permit test registration</p>
+          <div className="uc-meter"><i style={{ width: `${status.pct}%` }} /></div>
         </div>
+      </section>
 
-        {/* Tier Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {PLACEMENT_TIERS.map((t) => {
-            const isEligible = simulatedCgpa >= t.typicalCgpa;
-            return (
-              <div key={t.tier} className={`p-5 rounded-2xl border ${t.color} flex flex-col justify-between space-y-3`}>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-extrabold uppercase tracking-wider">{t.tier}</span>
-                    {isEligible ? (
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Eligible
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600">
-                        <XCircle className="h-3.5 w-3.5" /> Below &ge;{t.typicalCgpa}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-base font-black text-zinc-900 font-mono">{t.ctcRange}</p>
-                  <p className="text-[11px] text-zinc-900 mt-2 leading-relaxed">{t.description}</p>
-                </div>
-                <div className="pt-2 border-t border-white/10 text-[10px] text-zinc-500 font-mono">
-                  Benchmark CGPA: &ge; {t.typicalCgpa.toFixed(1)}
-                </div>
+      <section className="uc-plate uc-dir-ledger">
+        <div className="uc-plate-head"><span>Company tiers</span><span className="uc-dir-count">Benchmarked on historical VIT cut-offs</span></div>
+        {PLACEMENT_TIERS.map((t) => {
+          const isEligible = simulatedCgpa >= t.typicalCgpa;
+          return (
+            <article key={t.tier} className="uc-dir-card">
+              <div className="uc-dir-card-top">
+                <h3 className="uc-dir-title">{t.tier}</h3>
+                {isEligible
+                  ? <span className="uc-dir-tag is-good"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />Eligible</span>
+                  : <span className="uc-dir-tag is-warn"><XCircle className="h-3 w-3" aria-hidden="true" />Below &ge;{gpaLabel(t.typicalCgpa)}</span>}
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <p className="uc-dir-meta uc-num">{t.ctcRange}</p>
+              <p className="uc-dir-sub">{t.description}</p>
+              {/* .uc-dir-card-foot is a flex strip that expects a <small>; hung
+                  on a <p> it kept the paragraph's own bottom margin. */}
+              <div className="uc-dir-card-foot">
+                <small className="uc-num">Benchmark CGPA: &ge; {gpaLabel(t.typicalCgpa)}</small>
+              </div>
+            </article>
+          );
+        })}
+      </section>
     </div>
   );
 };

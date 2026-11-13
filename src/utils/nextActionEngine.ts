@@ -1,158 +1,78 @@
-import { TimetableSlot, AttendanceRecord, ExamSchedule, AssignmentTask, NextActionState } from '../types';
-import { matchAttendanceRecord } from './attendancePredictor';
-import { examStartMs, isSameIstDay, istTodayStartMs } from './examUtils';
+import { AttendanceRecord } from '../types';
+import { VTOP_ATTENDANCE_FLOOR, attendancePercentLabel } from './attendanceBands';
+import { periodsPerClass } from './labSessions';
 
 /**
- * The VTOP attendance row that belongs to THIS session. A course's theory and
- * lab halves are separate records, so matching on the course code alone can
- * quote the wrong half (a lab period shown with the theory percentage).
- * Returns undefined when VTOP has no confidently matching row.
+ * The safe-bunk calculator every attendance surface quotes from: the Academics
+ * detail rows, the at-risk list and per-course intel all call this one
+ * function, so the same course cannot show two different bunk limits on two
+ * screens.
+ *
+ * The file used to carry a second "what should I do right now" engine too. It
+ * re-derived the running class from its own copy of the timetable clock rules
+ * and no screen ever rendered it — the dashboard already answers that question
+ * from the tested timetableGrid helpers. Only the shared maths stays here.
  */
-function attendanceForSlot(slot: TimetableSlot, attendance: AttendanceRecord[]): AttendanceRecord | undefined {
-  const index = matchAttendanceRecord(slot, attendance);
-  return index === null ? undefined : attendance[index];
+
+export type BunkState = 'debar-risk' | 'below-target' | 'on-target';
+
+export interface BunkStatsOptions {
+  /**
+   * Return the raw VTOP period budget. Only whole-semester aggregates need
+   * this: they blend theory rows and lab rows, and there is no single class
+   * span to convert with — a lab class costs two periods, a theory class one.
+   * A single VTOP row always has a span and is reported in the unit a student
+   * acts in (`class` or `lab session`).
+   */
+  periods?: boolean;
 }
 
-export function calculateNextAction(
-  timetable: TimetableSlot[],
-  attendance: AttendanceRecord[],
-  exams: ExamSchedule[],
-  now: Date = new Date(),
-  assignments: AssignmentTask[] = []
-): NextActionState {
+/**
+ * What `canBunk` and `mustAttend` count. A lab is one class to a student but
+ * two periods to VTOP, and printing the period number as a class count
+ * promised twice the skips a lab course actually has.
+ */
+export type BunkUnit = 'class' | 'lab session' | 'period';
 
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTimeMinutes = currentHour * 60 + currentMinute;
-
-  // Find day name
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const todayName = days[now.getDay()] as any;
-
-  const todaySlots = timetable.filter((s) => s.day === todayName);
-
-  // A day can hold two papers (a lab FAT in the morning, a theory FAT after).
-  // Pick the one that matters now: the next to start, falling back to the
-  // earliest when they are all under way.
-  const examToday = exams
-    .filter((e) => isSameIstDay(e.date, now))
-    .map((exam) => ({ exam, startsAtMs: examStartMs(exam.date, exam.time) ?? Number.MAX_SAFE_INTEGER }))
-    .sort((a, b) => a.startsAtMs - b.startsAtMs);
-  const catExam = examToday.length ? examToday[0].exam : null;
-
-  if (catExam) {
-    // The card used to say "CAT Exam Today" for whatever row came first, and
-    // "Starts in 45m" regardless of the real start time. Both the type and the
-    // countdown now come from VTOP's own row; when the time is not published
-    // yet there is no countdown rather than an invented one.
-    const startsAtMs = examStartMs(catExam.date, catExam.time);
-    const minutesToStart = startsAtMs === null ? 0 : Math.round((startsAtMs - now.getTime()) / 60000);
-    return {
-      currentStatus: 'Exam Day',
-      title: `${catExam.examType === 'Other' ? 'Exam' : catExam.examType} Today: ${catExam.courseCode} (${catExam.courseTitle})`,
-      timeContext: catExam.time ? `Exam Time: ${catExam.time}` : 'Exam time not released by VTOP',
-      locationContext: `${catExam.venue || 'Venue not released'}${catExam.seatNo ? ` (Seat ${catExam.seatNo})` : ''}`,
-      reasoning: 'Review formula sheets & carry your VIT student ID card.',
-      nextStep: 'Reach venue 15 minutes before exam start time.',
-      countdownMinutes: minutesToStart > 0 ? minutesToStart : 0,
-      urgency: 'critical',
-    };
-  }
-
-  // Saturday is a teaching day at Chennai (the slot table has SAT times), so an
-  // empty-looking Saturday must be decided by the timetable, not the weekday.
-  if (todayName === 'Sunday' || (todayName === 'Saturday' && todaySlots.length === 0)) {
-    const dayStart = istTodayStartMs(now);
-    const nextExam = exams
-      .map((exam) => ({ exam, time: examStartMs(exam.date, '00:00') ?? Number.NaN }))
-      .filter((item) => Number.isFinite(item.time) && item.time >= dayStart)
-      .sort((a, b) => a.time - b.time)[0]?.exam;
-    const nextAssignment = assignments
-      .filter((assignment) => assignment.status === 'Pending' && assignment.dueDate)
-      .map((assignment) => ({ assignment, time: new Date(assignment.dueDate).getTime() }))
-      .filter((item) => Number.isFinite(item.time) && item.time >= dayStart)
-      .sort((a, b) => a.time - b.time)[0]?.assignment;
-    return {
-      currentStatus: 'Evening Free',
-      title: 'No classes scheduled today',
-      timeContext: 'No scheduled academic classes today.',
-      locationContext: 'No classroom assigned',
-      reasoning: nextExam ? `${nextExam.examType || 'Exam'}: ${nextExam.courseCode || 'Course'} on ${nextExam.date}.` : nextAssignment ? `${nextAssignment.title} is due on ${nextAssignment.dueDate}.` : 'No upcoming exam or pending assignment is available from the synced data.',
-      nextStep: nextAssignment ? `Review ${nextAssignment.title}${nextAssignment.courseCode ? ` (${nextAssignment.courseCode})` : ''}.` : nextExam ? `Prepare for ${nextExam.courseCode || nextExam.examType || 'the next exam'}.` : 'Review your synced academic records or refresh VTOP data.',
-      countdownMinutes: 0,
-      urgency: 'low',
-    };
-  }
-
-  let activeSlot: TimetableSlot | null = null;
-  let nextSlot: TimetableSlot | null = null;
-  let minDiff = Infinity;
-
-  for (const slot of todaySlots) {
-    const [startH, startM] = slot.startTime.split(':').map(Number);
-    const [endH, endM] = slot.endTime.split(':').map(Number);
-    const slotStartMins = startH * 60 + startM;
-    const slotEndMins = endH * 60 + endM;
-
-    if (currentTimeMinutes >= slotStartMins && currentTimeMinutes < slotEndMins) {
-      activeSlot = slot;
-      break;
-    } else if (slotStartMins > currentTimeMinutes) {
-      const diff = slotStartMins - currentTimeMinutes;
-      if (diff < minDiff) {
-        minDiff = diff;
-        nextSlot = slot;
-      }
-    }
-  }
-
-  if (activeSlot) {
-    const courseAttendance = attendanceForSlot(activeSlot, attendance);
-    const pct = courseAttendance ? `${courseAttendance.percentage}%` : 'not published by VTOP yet';
-
-    return {
-      currentStatus: 'Class Active',
-      title: `${activeSlot.courseCode}: ${activeSlot.courseTitle}`,
-      timeContext: `Active Slot ${activeSlot.slot} (${activeSlot.startTime} - ${activeSlot.endTime})`,
-      locationContext: `Venue: ${activeSlot.venue} | Faculty: ${activeSlot.facultyName}`,
-      reasoning: `Current attendance is ${pct}. Attending today maintains your safe buffer.`,
-      nextStep: 'Mark attendance in faculty log if required & take module notes.',
-      countdownMinutes: 0,
-      urgency: courseAttendance && courseAttendance.percentage < 78 ? 'high' : 'medium',
-    };
-  }
-
-  if (nextSlot) {
-    const courseAttendance = attendanceForSlot(nextSlot, attendance);
-    const pct = courseAttendance ? `${courseAttendance.percentage}%` : 'not available';
-
-    return {
-      currentStatus: 'Upcoming Class',
-      title: `Next Class: ${nextSlot.courseCode} (${nextSlot.courseTitle})`,
-      timeContext: `Starts at ${nextSlot.startTime} (in ${minDiff} minutes)`,
-      locationContext: [nextSlot.building, nextSlot.roomNo ? `Room ${nextSlot.roomNo}` : '', nextSlot.venue].filter(Boolean).join(' | ') || 'Venue not published by VTOP',
-      reasoning: `Attendance is ${pct}. Slot: ${nextSlot.slot}. Faculty: ${nextSlot.facultyName}`,
-      nextStep: `Head to ${nextSlot.venue || nextSlot.building || 'the venue shown on VTOP'}${nextSlot.roomNo ? `, Room ${nextSlot.roomNo}` : ''}.`,
-      countdownMinutes: minDiff,
-      urgency: minDiff <= 15 ? 'high' : 'medium',
-    };
-  }
-
-  return {
-    currentStatus: 'Evening Free',
-    title: 'Classes Done for Today!',
-    timeContext: 'All scheduled slots completed.',
-    locationContext: 'No classroom assigned',
-    reasoning: 'All scheduled timetable slots are complete. Review your synced academic records for pending work.',
-    nextStep: 'Review pending assignments and upcoming exams from the synced data.',
-    countdownMinutes: 0,
-    urgency: 'low',
-  };
+export interface BunkStats {
+  state: BunkState;
+  status: string;
+  canBunk: number;
+  mustAttend: number;
+  message: string;
+  safeToBunk: boolean;
+  unit: BunkUnit;
 }
 
-export function calculateBunkStats(attendanceRecord: AttendanceRecord, targetPct: number = 75) {
+/**
+ * Which of the three situations a record is in. Machine-readable, because the
+ * display wording below is prose a student reads and callers must not have to
+ * string-match it to decide a colour.
+ *
+ * `debar-risk` is VTOP's own line; `below-target` is the student's. They used to
+ * share one heading, "Debarred Risk", which told a student sitting at 78% with
+ * an 85% bar that they were about to be debared — a warning nobody had earned,
+ * and the kind of lie that makes a student stop trusting the numbers on screen.
+ */
+export function calculateBunkStats(
+  attendanceRecord: AttendanceRecord,
+  targetPct: number = VTOP_ATTENDANCE_FLOOR,
+  options: BunkStatsOptions = {},
+): BunkStats {
   const { attended, totalHeld } = attendanceRecord;
   const currentPct = totalHeld > 0 ? (attended / totalHeld) * 100 : 100;
+  // VTOP counts periods; `canBunk` and `mustAttend` answer in classes. A lab
+  // session is two periods, so six spare periods are three lab sessions, not
+  // six — the old arithmetic printed the period budget as a class count.
+  const span = options.periods ? 1 : periodsPerClass({ slot: attendanceRecord.slot, courseType: attendanceRecord.type });
+  const unit: BunkUnit = options.periods ? 'period' : span > 1 ? 'lab session' : 'class';
+  const plural = (count: number) => {
+    if (count === 1) return unit;
+    return unit === 'class' ? 'classes' : `${unit}s`;
+  };
+  // An aggregate has no single class span, so its message counts periods and
+  // has to say what a period is worth in the one case that differs.
+  const periodNote = options.periods ? ' A lab session counts as two.' : '';
 
   if (currentPct < targetPct) {
     // How many consecutive classes MUST be attended to reach targetPct?
@@ -160,28 +80,40 @@ export function calculateBunkStats(attendanceRecord: AttendanceRecord, targetPct
     // 100*(attended + x) = targetPct*(totalHeld + x)
     // 100*attended + 100*x = targetPct*totalHeld + targetPct*x
     // (100 - targetPct)*x = targetPct*totalHeld - 100*attended
-    const required = Math.ceil((targetPct * totalHeld - 100 * attended) / (100 - targetPct));
+    const requiredPeriods = Math.ceil((targetPct * totalHeld - 100 * attended) / (100 - targetPct));
+    // Attending whole classes; a lab session supplies both of its periods at
+    // once, so a fractional need still costs one whole session.
+    const required = Math.ceil(requiredPeriods / span);
+    const debarred = currentPct < VTOP_ATTENDANCE_FLOOR;
     return {
-      status: 'Debarred Risk',
+      state: debarred ? 'debar-risk' : 'below-target',
+      status: debarred ? 'Debarred risk' : 'Below your target',
       canBunk: 0,
       mustAttend: Math.max(0, required),
-      message: `CRITICAL: You must attend the next ${required} consecutive classes without missing to reach ${targetPct}%.`,
+      message: `Attend the next ${required} ${plural(required)} in a row to get back to ${targetPct}%.${periodNote}`,
       safeToBunk: false,
+      unit,
     };
   } else {
     // How many classes can be safely skipped while staying >= targetPct?
     // attended / (totalHeld + x) >= targetPct / 100
     // 100 * attended >= targetPct * totalHeld + targetPct * x
     // targetPct * x <= 100 * attended - targetPct * totalHeld
-    const maxBunk = Math.floor((100 * attended - targetPct * totalHeld) / targetPct);
+    const maxBunkPeriods = Math.floor((100 * attended - targetPct * totalHeld) / targetPct);
+    // Skip whole classes. A lab session burns two periods, so one spare period
+    // is not a spare lab — `safeToBunk` follows the class count, not the
+    // period count.
+    const maxBunk = Math.floor(maxBunkPeriods / span);
     return {
-      status: 'Safe Buffer',
+      state: 'on-target' as BunkState,
+      status: 'On target',
       canBunk: Math.max(0, maxBunk),
       mustAttend: 0,
       message: maxBunk > 0
-        ? `SAFE: You can safely miss ${maxBunk} class${maxBunk > 1 ? 'es' : ''} while maintaining above ${targetPct}%.`
-        : `BORDERLINE: You are currently at ${currentPct.toFixed(1)}%. Missing 1 class drops you below ${targetPct}%.`,
+        ? `You can miss ${maxBunk} more ${plural(maxBunk)} and stay above ${targetPct}%.${periodNote}`
+        : `You are at ${attendancePercentLabel(currentPct)}% — one absence drops you below ${targetPct}%.${periodNote}`,
       safeToBunk: maxBunk > 0,
+      unit,
     };
   }
 }

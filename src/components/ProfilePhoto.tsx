@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { getShowProfilePhoto, subscribeShowProfilePhoto } from '../lib/settings';
 
 interface ProfilePhotoProps {
   name?: string | null;
@@ -19,22 +20,41 @@ function initialsFor(name?: string | null): string {
 
 /** One account-safe avatar renderer used by every UltraCC identity surface. */
 export const ProfilePhoto: React.FC<ProfilePhotoProps> = ({ name, src, size = 'md', className = '' }) => {
-  const [imageState, setImageState] = useState<'loading' | 'loaded' | 'failed'>(src ? 'loading' : 'failed');
+  // The "Show VTOP profile picture" preference. When OFF, the real photo is
+  // never shown and the initials fallback is displayed instead.
+  const showPhotoPref = useSyncExternalStore(subscribeShowProfilePhoto, getShowProfilePhoto);
+  const effectiveSrc = showPhotoPref ? src : null;
+  const [imageState, setImageState] = useState<'idle' | 'loading' | 'loaded' | 'failed'>(
+    effectiveSrc ? 'loading' : 'idle',
+  );
   const initials = useMemo(() => initialsFor(name), [name]);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  useEffect(() => {
-    setImageState(src ? 'loading' : 'failed');
-  }, [src]);
+  // Track whether we've already loaded this specific source so re-toggling
+  // the preference on doesn't flash through loading→loaded again.
+  const loadedSrcRef = useRef<string | null>(null);
 
-  // Data-URI images can finish decoding before React's onLoad listener is
-  // attached (they need no network). If the element is already complete with
-  // real dimensions, promote it to loaded directly — otherwise a perfectly
-  // valid photo renders forever as 'loading' and the initials stay visible.
   useEffect(() => {
+    if (!effectiveSrc) {
+      // Preference turned off: hide the image but keep its loaded state cached
+      // so turning it back on is instant (no loading flash, no initials flicker).
+      setImageState((prev) => prev === 'loaded' ? 'loaded' : 'idle');
+      return;
+    }
+    // Already decoded this exact source? Show immediately.
+    if (loadedSrcRef.current === effectiveSrc) {
+      setImageState('loaded');
+      return;
+    }
+    // Check if the existing <img> already has the right source decoded.
     const el = imgRef.current;
-    if (el && el.complete && el.naturalWidth > 0) setImageState('loaded');
-  }, [src]);
+    if (el && el.src === effectiveSrc && el.complete && el.naturalWidth > 0) {
+      loadedSrcRef.current = effectiveSrc;
+      setImageState('loaded');
+      return;
+    }
+    setImageState('loading');
+  }, [effectiveSrc]);
 
   // Dev-only diagnostic on failure — safe metadata only (whether a source
   // existed; never its content). The initials fallback never overwrites a
@@ -42,27 +62,39 @@ export const ProfilePhoto: React.FC<ProfilePhotoProps> = ({ name, src, size = 'm
   useEffect(() => {
     const devMode = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
     if (imageState === 'failed' && devMode) {
-      console.info(`[photo] image load failed; source present: ${src ? 'yes' : 'no'} — falling back to initials`);
+      console.info(`[photo] image load failed; source present: ${effectiveSrc ? 'yes' : 'no'} — falling back to initials`);
     }
-  }, [imageState, src]);
+  }, [imageState, effectiveSrc]);
 
-  const showImage = !!src && imageState === 'loaded';
+  // Only show the image when the preference is ON and it's loaded.
+  const showImage = !!effectiveSrc && imageState === 'loaded';
+  // Keep the <img> mounted whenever a source URL exists (regardless of the
+  // preference toggle) so the browser retains the decoded bitmap. This avoids
+  // the unmount/remount cycle that caused initials to flash during on→off→on
+  // toggles, making the header name appear to glitch.
   return (
     <span className={`profile-photo ${sizes[size]} ${className}`} aria-label={name || 'Student profile photo'}>
-      {src && imageState === 'loading' && <span className="profile-photo-skeleton" aria-hidden="true" />}
+      {effectiveSrc && imageState === 'loading' && <span className="profile-photo-skeleton" aria-hidden="true" />}
       {src && (
         <img
           ref={imgRef}
           src={src}
           alt=""
           className={showImage ? 'profile-photo-image is-loaded' : 'profile-photo-image'}
-          onLoad={() => setImageState('loaded')}
+          onLoad={() => {
+            loadedSrcRef.current = src;
+            setImageState('loaded');
+          }}
           onError={() => {
             // Spurious errors happen when src swaps mid-decode; if the element
             // is actually complete with real dimensions, trust the pixels.
             const el = imgRef.current;
-            if (el && el.complete && el.naturalWidth > 0) setImageState('loaded');
-            else setImageState('failed');
+            if (el && el.complete && el.naturalWidth > 0) {
+              loadedSrcRef.current = src;
+              setImageState('loaded');
+            } else {
+              setImageState('failed');
+            }
           }}
         />
       )}

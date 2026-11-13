@@ -9,6 +9,7 @@ import {
   buildCourseIntel, buildCourseIntelRows, evaluatedComponents,
   gradeForTotal, GRADE_BANDS,
 } from '../courseIntel';
+import { TARGET_SCORES, buildCourseModel, solveTargetFAT } from '../gradeModel';
 import { AttendanceRecord, CourseMarks } from '../../types';
 
 function attendance(overrides: Partial<AttendanceRecord> = {}): AttendanceRecord {
@@ -21,7 +22,6 @@ function attendance(overrides: Partial<AttendanceRecord> = {}): AttendanceRecord
     attended: 20,
     totalHeld: 24,
     percentage: 83.3,
-    category: 'Safe',
     lastUpdated: '2026-09-01',
     venue: 'SJT',
     ...overrides,
@@ -75,15 +75,36 @@ describe('buildCourseIntel — target arithmetic', () => {
   });
 
   it('says exactly what FAT marks are needed for the target grade', () => {
-    // Target B (70): needs 70 - 30.8 = 39.2 weight out of the pending 40.
-    const row = buildCourseIntel(attendance(), marks(), 'B')!;
+    // Target B (70): 30.8 earned, and DA 2's 5 weight projected at the 77% pace
+    // the graded rows show — not counted as a zero for the FAT to cover.
+    const m = marks();
+    const row = buildCourseIntel(attendance(), m, 'B')!;
     expect(row.target?.weightNeeded).toBeCloseTo(39.2, 5);
     // FAT declared but ungraded → pending_final, never a false 'not achievable'.
     expect(row.target?.status).toBe('pending_final');
     expect(row.target?.pendingFat).toEqual({ max: 100, weightage: 40 });
-    expect(row.target?.nextAssessment).toEqual({ name: 'FAT', raw: 98, max: 100 });
-    expect(row.nextAction).toContain('98/100');
+    // The ask is the shared solver's, rounded up to a whole mark on the paper.
+    const solved = solveTargetFAT(buildCourseModel(m), TARGET_SCORES.B);
+    expect(solved.requiredRaw).toBeCloseTo(62.13, 2);
+    expect(row.target?.nextAssessment).toEqual({
+      name: 'FAT',
+      raw: Math.ceil(solved.requiredRaw! - 1e-9),
+      max: 100,
+    });
+    expect(row.target?.nextAssessment?.raw).toBe(63);
+    expect(row.nextAction).toContain('63/100');
     expect(row.nextAction).toContain('B');
+  });
+
+  it('never asks for fewer FAT marks than VIT requires to pass', () => {
+    // Target E (40) is already covered by the projected pace, so the solver owes
+    // 0 marks — but a 0 on the FAT fails the course regardless. VIT's 40% of the
+    // paper is the floor this card must quote.
+    const row = buildCourseIntel(attendance(), marks(), 'E')!;
+    const solved = solveTargetFAT(buildCourseModel(marks()), TARGET_SCORES.E);
+    expect(solved.isAlreadyAchieved || (solved.requiredRaw ?? 0) < solved.vitFatMinimumRaw!).toBe(true);
+    expect(row.target?.nextAssessment?.raw).toBe(40);
+    expect(row.nextAction).toContain('~40/100 in FAT');
   });
 
   it('counts a declared-but-ungraded row as weight still available', () => {
@@ -155,7 +176,65 @@ describe('buildCourseIntel — attendance risk', () => {
     const row = buildCourseIntel(attendance({ attended: 10, totalHeld: 20, percentage: 50 }), marks())!;
     expect(row.attendance.risk).toBe('risk');
     expect(row.attendance.mustAttend).toBeGreaterThan(0);
-    expect(row.nextAction).toContain('attend');
+    // The advice is a sentence the student acts on, not a log level: the shared
+    // engine writes "Attend the next N classes in a row to get back to X%".
+    expect(row.nextAction).toMatch(/^Attend the next \d+ classes in a row to get back to \d+%\.$/);
+  });
+});
+
+describe('buildCourseIntel — the student\'s own bar, not always 75', () => {
+  // These cards render on the same screen as the Academics target slider, so
+  // they have to measure against the number that slider shows. A student who
+  // set 85% and sits at 83.3% is short of their own bar even though VTOP's
+  // floor is cleared; showing "2 safe bunks" beside a slider reading 85% is the
+  // contradiction these tests pin.
+  it('measures safe bunks against the target it is handed', () => {
+    const at75 = buildCourseIntel(attendance({ attended: 20, totalHeld: 24 }), marks(), 'B', 75)!;
+    expect(at75.attendance.risk).toBe('safe');
+    expect(at75.attendance.safeBunks).toBe(2);
+
+    const at85 = buildCourseIntel(attendance({ attended: 20, totalHeld: 24 }), marks(), 'B', 85)!;
+    expect(at85.attendance.risk).toBe('risk');
+    expect(at85.attendance.safeBunks).toBe(0);
+    // ceil((85*24 - 100*20) / (100-85)) = ceil(40/15) = 3
+    expect(at85.attendance.mustAttend).toBe(3);
+    expect(at85.nextAction).toContain('85%');
+    expect(at85.nextAction).not.toContain('75%');
+  });
+
+  it('keeps VTOP\'s 75% as the bar when the caller has no saved target', () => {
+    expect(buildCourseIntel(attendance(), marks(), 'B')!.targetPercent).toBe(75);
+  });
+
+  it('quotes the target in the good-news advice instead of a hardcoded 75%', () => {
+    // CAT1 12 + CAT2 10.8 + DA1 4 + Quiz 4 + FAT 36 = 66.8 ≥ C (60) → achieved.
+    const row = buildCourseIntel(
+      attendance({ attended: 30, totalHeld: 30, percentage: 100 }),
+      marks({ fat: { scored: 90, max: 100, weightage: 40 } }),
+      'C',
+      85,
+    )!;
+    expect(row.target?.status).toBe('achieved');
+    expect(row.nextAction).toContain('Hold attendance above 85%');
+  });
+
+  it('threads the saved target through every row the cards render', () => {
+    const rows = buildCourseIntelRows(
+      [
+        attendance({ courseCode: 'CSE1001', attended: 20, totalHeld: 24, percentage: 83.3 }),
+        attendance({ courseCode: 'MAT1001', attended: 30, totalHeld: 30, percentage: 100 }),
+      ],
+      [],
+      {},
+      85,
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.targetPercent === 85)).toBe(true);
+    // 83.3% clears VTOP's floor but not an 85% bar — it leads the list.
+    expect(rows[0].courseCode).toBe('CSE1001');
+    expect(rows[0].attendance.risk).toBe('risk');
+    expect(rows[1].attendance.risk).toBe('safe');
+    expect(rows[1].attendance.safeBunks).toBe(5); // floor((3000 - 85*30)/85)
   });
 });
 

@@ -9,7 +9,7 @@
  *
  * Categories (per-category preferences):
  *   assignments    — due soon (within 48h, pending only)
- *   attendance     — below the 75% safety line
+ *   attendance     — below VTOP's floor, at the urgency step attendanceBands sets
  *   exams          — within 3 days
  *   marks          — newly published marks since the last seen snapshot
  *   campusEvents   — important Event Hub events within 3 days
@@ -23,6 +23,19 @@
 
 import type { AssignmentTask, AttendanceRecord, ExamSchedule } from '../types';
 import { attendanceComponent, componentLabel } from '../utils/attendanceComponents';
+import { VTOP_ATTENDANCE_FLOOR, attendanceAlertUrgency, attendancePercentLabel } from '../utils/attendanceBands';
+import { formatClassTime, getTimedDaySlots, minutesOfDay, timetableTimeToMinutes } from '../utils/timetableGrid';
+import { calendarDaysUntil } from '../utils/examUtils';
+import { localDateIso } from '../utils/localDate';
+
+/**
+ * The device's own day, written for a notification ledger key.
+ *
+ * Deliberately the device calendar rather than India's: a ledger id that
+ * changed at 05:30 IST would let a class reminder fire twice in one morning
+ * for a student whose phone is set to another zone.
+ */
+const isoDay = (ts: number): string => localDateIso(new Date(ts));
 
 // ---------------------------------------------------------------------------
 // Categories & preferences
@@ -100,43 +113,6 @@ export interface NotificationCandidate {
   urgency: 'info' | 'warning' | 'critical';
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function isoDay(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/** Parse a VTOP date string (DD-MM-YYYY or ISO) to epoch ms, or null. */
-export function parseVtopDate(raw: string): number | null {
-  if (!raw) return null;
-  const iso = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return new Date(`${iso[1]}-${iso[2]}-${iso[3]}T00:00:00`).getTime();
-  const dmy = raw.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
-  if (dmy) {
-    const [, d, m, y] = dmy;
-    return new Date(Number(y), Number(m) - 1, Number(d)).getTime();
-  }
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
-}
-
-/**
- * Calendar-day difference between a VTOP date and `now` (due today → 0).
- * Date-only VTOP fields mean "on that date", so day-difference — not raw
- * ms — is the honest measure (midnight parsing would otherwise make
- * everything due today look already-past by 09:00).
- */
-export function calendarDaysUntil(raw: string, now: number): number | null {
-  const due = parseVtopDate(raw);
-  if (due === null) return null;
-  const dueDay = new Date(due);
-  const nowDay = new Date(now);
-  const dueMid = new Date(dueDay.getFullYear(), dueDay.getMonth(), dueDay.getDate()).getTime();
-  const nowMid = new Date(nowDay.getFullYear(), nowDay.getMonth(), nowDay.getDate()).getTime();
-  return Math.round((dueMid - nowMid) / DAY_MS);
-}
-
 // ---------------------------------------------------------------------------
 // Candidate generation (pure — takes data, returns candidates)
 
@@ -174,18 +150,20 @@ export function generateNotificationCandidates(input: SmartNotificationInput): N
     });
   }
 
-  // Attendance below the safety line — one candidate per VTOP row, because
+  // Attendance below VTOP's floor — one candidate per VTOP row, because
   // theory and lab are tracked separately and either half can be short on its
-  // own. A component VTOP has not started yet is not "0% at risk".
+  // own. A component VTOP has not started yet is not "0% at risk". The floor and
+  // the critical step both come from attendanceBands, so a notification can
+  // never scream about a number the Academics cards call safe.
   for (const a of input.attendance) {
-    if (!(a.totalHeld > 0) || a.percentage >= 75) continue;
+    if (!(a.totalHeld > 0) || a.percentage >= VTOP_ATTENDANCE_FLOOR) continue;
     const component = componentLabel(attendanceComponent(a));
     out.push({
       id: `attend:${a.courseCode}:${a.slot || component}:${isoDay(now)}`,
       category: 'attendance',
       title: `${component} attendance risk: ${a.courseCode}`,
-      body: `${a.percentage}% ${component.toLowerCase()} attendance in ${a.courseTitle || a.courseCode} (${a.attended}/${a.totalHeld} classes) — below the 75% requirement.`,
-      urgency: a.percentage < 70 ? 'critical' : 'warning',
+      body: `${attendancePercentLabel(a.percentage)}% ${component.toLowerCase()} attendance in ${a.courseTitle || a.courseCode} (${a.attended}/${a.totalHeld} classes) — under VTOP’s ${VTOP_ATTENDANCE_FLOOR}% line.`,
+      urgency: attendanceAlertUrgency(a.percentage),
     });
   }
 
@@ -231,15 +209,13 @@ export function generateNotificationCandidates(input: SmartNotificationInput): N
   }
 
   // Today's first class heads-up (once per day)
-  const firstToday = input.timetable
-    .filter((s) => s.day === todayDay)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime))[0];
+  const firstToday = getTimedDaySlots(input.timetable, todayDay)[0];
   if (firstToday) {
     out.push({
       id: `tt:${isoDay(now)}:${firstToday.courseCode}`,
       category: 'timetable',
       title: `First class: ${firstToday.courseCode}`,
-      body: `Starts at ${firstToday.startTime}. Have a good day!`,
+      body: `Starts at ${formatClassTime(firstToday.startTime)}. Have a good day!`,
       urgency: 'info',
     });
   }
@@ -249,14 +225,9 @@ export function generateNotificationCandidates(input: SmartNotificationInput): N
   // was asleep). Combined lab sessions are single rows, so a 2-period lab
   // gets exactly one reminder, never a second one for its next hour.
   const nowDate = new Date(now);
-  const minutesNow = nowDate.getHours() * 60 + nowDate.getMinutes();
-  const toMinutes = (t: string): number | null => {
-    const [h, m] = t.split(':').map(Number);
-    return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
-  };
-  for (const s of input.timetable) {
-    if (s.day !== todayDay) continue;
-    const start = toMinutes(s.startTime);
+  const minutesNow = minutesOfDay(nowDate);
+  for (const s of getTimedDaySlots(input.timetable, todayDay)) {
+    const start = timetableTimeToMinutes(s.startTime);
     if (start === null) continue;
     const until = start - minutesNow;
     if (until <= 0 || until > 10) continue;
@@ -264,7 +235,7 @@ export function generateNotificationCandidates(input: SmartNotificationInput): N
       id: `class:${isoDay(now)}:${s.courseCode}:${s.startTime}`,
       category: 'timetable',
       title: `Class soon: ${s.courseCode}`,
-      body: `Starts in ${until} min${s.venue ? ` at ${s.venue}` : ''}${s.endTime ? ` · runs until ${s.endTime}` : ''}.`,
+      body: `Starts in ${until} min${s.venue ? ` at ${s.venue}` : ''}${s.endTime ? ` · runs until ${formatClassTime(s.endTime, s.endTime)}` : ''}.`,
       urgency: 'warning',
     });
   }

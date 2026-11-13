@@ -74,6 +74,15 @@ describe('parseMoodleDate', () => {
     expect(parseMoodleDate('not a date')).toBeNull();
     expect(parseMoodleDate('')).toBeNull();
   });
+
+  it('returns null for a day the month never had', () => {
+    // Date.UTC rolls "31 February" into March, which would give a submission a
+    // due date Moodle never set — and a student an extra, or a missing, weekend.
+    expect(parseMoodleDate('Saturday, 31 February 2026, 11:59 PM')).toBeNull();
+    expect(parseMoodleDate('29 February 2025, 10:00 AM')).toBeNull(); // not a leap year
+    // the same words with a day that exists still parse
+    expect(parseMoodleDate('29 February 2028, 10:00 AM')).not.toBeNull();
+  });
 });
 
 describe('parseCourses', () => {

@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>UltraCC — VIT Chennai</title>
     <meta name="description" content="UltraCC — Your VIT student operating system. Timetable, attendance, marks, grades, exams, campus navigation and more." />
-    <meta name="theme-color" content="#2563eb" />
+    <!-- Chrome tints the address/status bar from this. Two entries follow the
+         system in the default (system) theme; the boot script below rewrites
+         both when the student has picked Light, Dark or Midnight, because a
+         media-attribute entry alone cannot express a manual override. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111b2c" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -14,14 +19,51 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="apple-touch-icon" href="/icon-192.svg" />
+    <style>
+      /* Boot canvas.
+         The app's first frame used to be hardcoded light, so a student whose
+         phone is in dark mode got a white flash before React mounted. These two
+         rules carry the same three canvases the token layer declares, and the
+         script below picks one before the first paint. Inline and tiny on
+         purpose: it has to be parsed before anything else is. */
+      html { --boot-bg:#f5f7fb; --boot-surface:#ffffff; --boot-muted:#52617a; --boot-line:#e2e8f2; background:var(--boot-bg); }
+      html[data-theme="dark"] { --boot-bg:#0b1220; --boot-surface:#111b2c; --boot-muted:#96a8c2; --boot-line:#263852; }
+      html[data-theme="midnight"] { --boot-bg:#070b13; --boot-surface:#0d1524; --boot-muted:#8ea3c0; --boot-line:#1e2c42; }
+      .boot { min-height:100vh; min-height:100dvh; display:grid; place-items:center; background:var(--boot-bg); color:var(--boot-muted); font:800 10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.16em; text-transform:uppercase }
+      .boot i { display:block; width:36px; height:3px; margin:0 0 13px; border-radius:99px; background:var(--boot-accent,#2563eb); transform-origin:left center; animation:boot-sweep 1.15s ease-in-out infinite }
+      @keyframes boot-sweep { 0%,100% { transform:scaleX(.3) } 50% { transform:scaleX(1) } }
+      @media (prefers-reduced-motion: reduce) { .boot i { animation:none } }
+    </style>
+    <script>
+      /*
+       * Choose the canvas before the splash paints. Mirrors getAppTheme() in
+       * src/lib/settings.ts: an explicit choice wins, and only a missing key
+       * falls through to the system — so an unset student on a dark phone opens
+       * dark, and one who picked Light stays light whichever way the OS moves.
+       * localStorage can throw in a locked-down web view, hence the try/catch;
+       * the light canvas in that case is the same as the app's own default.
+       */
+      (function () {
+        try {
+          var swatches = { blue: '#2563eb', teal: '#0d9488', emerald: '#059669', violet: '#7c3aed', rose: '#e11d48', amber: '#d97706' };
+          var canvases = { light: '#ffffff', dark: '#111b2c', midnight: '#0d1524' };
+          var theme = JSON.parse(localStorage.getItem('ultracc.theme'));
+          if (theme !== 'light' && theme !== 'dark' && theme !== 'midnight') {
+            theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+          var accent = JSON.parse(localStorage.getItem('ultracc.accent'));
+          if (swatches[accent]) document.documentElement.style.setProperty('--boot-accent', swatches[accent]);
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) metas[i].setAttribute('content', canvases[theme] || canvases.light);
+        } catch (e) { /* storage-less web views keep the light canvas */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root">
-      <div aria-live="polite" style="min-height:100vh;display:grid;place-items:center;background:#f5f7fb;color:#6b7b96;font:700 12px/1.4 Inter,ui-sans-serif,system-ui,sans-serif">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span aria-hidden="true" style="width:9px;height:9px;border-radius:50%;background:#2563eb;box-shadow:0 0 0 5px #eff5ff"></span>
-          <span>Loading UltraCC</span>
-        </div>
+      <div class="boot" role="status" aria-live="polite">
+        <div><i aria-hidden="true"></i>Loading UltraCC</div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

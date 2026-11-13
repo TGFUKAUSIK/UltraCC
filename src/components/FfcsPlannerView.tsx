@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, Plus, Trash2, Copy, Users, CheckCircle2, AlertTriangle, Share2, Info, Search, Download, Table2, Layers, Clock3 } from 'lucide-react';
-import '../styles/ffcs-planner.css';
+import { AlertTriangle, CheckCircle2, Clock3, Copy, Download, Info, Layers, Pencil, Plus, Search, Share2, Trash2, Users, X } from 'lucide-react';
 import {
   FFCS_DATA_SEMESTER, clashingSectionIds, expandSlotString, ffcsSectionsFor, planCredits,
   searchFfcsCourses, type FfcsSection, type PlanSection,
 } from '../lib/ffcsPlanner';
 import { PLAN_PREFIX, decodePlan, encodePlan, nextPlanId, planCodeVersion, type PlanEntry } from '../lib/ffcsShare';
+import { showToast } from '../lib/toast';
 import { exportFfcsPlanImage } from '../utils/imageExport';
 
 interface FfcsPlannerViewProps {
@@ -113,16 +113,34 @@ export const FfcsPlannerView: React.FC<FfcsPlannerViewProps> = ({ timetable }) =
     setTables((ts) => [...ts, fresh]);
     setActiveId(fresh.id);
   };
-  const renameTable = (id: string) => {
-    const name = window.prompt('Rename plan', tables.find((t) => t.id === id)?.name || '');
-    if (name && name.trim()) setTables((ts) => ts.map((t) => (t.id === id ? { ...t, name: name.trim().slice(0, 40) } : t)));
+
+  /**
+   * Renaming happens in the chip itself. It used to be a `window.prompt`,
+   * which iOS answers with null in a home-screen PWA — so on an iPhone the ✎
+   * did nothing at all, and the plan name stayed "Plan 3" forever.
+   */
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+
+  const startRename = (id: string) => {
+    setRenamingId(id);
+    setRenameDraft(tables.find((t) => t.id === id)?.name || '');
+  };
+
+  const commitRename = () => {
+    const name = renameDraft.trim().slice(0, 40);
+    if (name && renamingId) setTables((ts) => ts.map((t) => (t.id === renamingId ? { ...t, name } : t)));
+    setRenamingId(null);
   };
   const deleteTable = (id: string) => {
+    const name = tables.find((t) => t.id === id)?.name || 'Plan';
     setTables((ts) => {
       const next = ts.filter((t) => t.id !== id);
       if (activeId === id) setActiveId(next[0]?.id || '');
       return next;
     });
+    if (renamingId === id) setRenamingId(null);
+    showToast({ title: 'Plan deleted', message: `“${name}” is gone. Re-syncing does not bring it back.`, type: 'info' });
   };
 
   // --- Course picker --------------------------------------------------------
@@ -178,7 +196,12 @@ export const FfcsPlannerView: React.FC<FfcsPlannerViewProps> = ({ timetable }) =
     const candidate = toPlanSection(s);
     const conflicts = candidateConflicts(candidate);
     if (conflicts.length) {
-      window.alert(`"${candidate.code} (${candidate.slot})" overlaps ${conflicts[0]}. Drop the conflicting one first.`);
+      showToast({
+        title: 'Time clash',
+        message: `${candidate.code} (${candidate.slot}) runs at the same time as ${conflicts[0]}. Remove that one, or pick a different section.`,
+        type: 'warning',
+        duration: 7000,
+      });
       return;
     }
     mutatePlan((secs) => [...secs, candidate]);
@@ -303,216 +326,302 @@ export const FfcsPlannerView: React.FC<FfcsPlannerViewProps> = ({ timetable }) =
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">FFCS Planner</h2>
-          <p className="text-sm text-zinc-500 font-medium mt-1">
-            Build registration plans from the course inventory — clashes highlight as you pick
-          </p>
+    <div className="uc-ffcs pb-12 min-w-0">
+      {/* Masthead: what this is, the three controls, and the four counters. */}
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">FFCS Planner</span>
+            <h2 className="uc-dir-name">Build your semester</h2>
+            <p className="uc-note">Search the course inventory, pick a section, and clashes light up as you go.</p>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setShowShare((s) => !s)} className="ffcs-tool-btn"><Share2 className="h-4 w-4" /> Share</button>
-          <button onClick={() => setShowCompare((s) => !s)} className="ffcs-tool-btn"><Users className="h-4 w-4" /> Compare with Friend</button>
-          <button onClick={exportPlan} disabled={!plan.length} className="ffcs-tool-btn disabled:opacity-40 disabled:cursor-not-allowed"><Download className="h-4 w-4" /> Export PNG</button>
-        </div>
-      </div>
 
-      <div className="ffcs-data-note">
-        <Info className="h-4 w-4" />
+        <div className="uc-ffcs-bar">
+          <button
+            type="button"
+            onClick={() => setShowShare((s) => !s)}
+            aria-expanded={showShare}
+            className={`uc-ffcs-act ${showShare ? 'is-on' : ''}`}
+          >
+            <Share2 className="h-3.5 w-3.5" aria-hidden="true" /> Share
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowCompare((s) => !s)}
+            aria-expanded={showCompare}
+            className={`uc-ffcs-act ${showCompare ? 'is-on' : ''}`}
+          >
+            <Users className="h-3.5 w-3.5" aria-hidden="true" /> Compare with a friend
+          </button>
+          <button type="button" onClick={exportPlan} disabled={!plan.length} className="uc-ffcs-act">
+            <Download className="h-3.5 w-3.5" aria-hidden="true" /> Export PNG
+          </button>
+        </div>
+
+        <div className="uc-ffcs-metrics">
+          <div className="uc-ffcs-metric"><span>Registered</span><b>{real.length}</b></div>
+          <div className="uc-ffcs-metric"><span>Planned</span><b>{plan.length}</b></div>
+          <div className="uc-ffcs-metric"><span>Credits</span><b>{plannedCredits || '—'}</b></div>
+          <div className={`uc-ffcs-metric ${planClashIds.size ? 'is-risk' : ''}`}><span>Clashes</span><b>{planClashIds.size || 0}</b></div>
+        </div>
+      </section>
+
+      <p className="uc-note-row">
+        <Info className="h-4 w-4" aria-hidden="true" />
         <span>
-          <strong>Course inventory:</strong> {FFCS_DATA_SEMESTER} Chennai course catalogue snapshot. Not a live VTOP feed: sections, faculty and venues reflect that snapshot, and seat availability is not known. Your registered timetable (synced from VTOP) stays authoritative.
+          <b>Course inventory.</b> {FFCS_DATA_SEMESTER} Chennai catalogue snapshot — sections, faculty and
+          venues come from that snapshot rather than a live VTOP feed, so seat availability is unknown.
+          Your registered timetable (synced from VTOP) stays authoritative.
         </span>
-      </div>
+      </p>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label="Registered sessions" value={String(real.length)} icon={Table2} color="text-blue-600" />
-        <Stat label="Planned sections" value={String(plan.length)} icon={Calendar} color="text-violet-600" />
-        <Stat label="Planned credits" value={plannedCredits ? String(plannedCredits) : '—'} icon={CheckCircle2} color="text-emerald-600" />
-        <Stat label="Clashes" value={planClashIds.size ? String(planClashIds.size) : '0'} icon={AlertTriangle} color={planClashIds.size ? 'text-rose-600' : 'text-emerald-600'} />
-      </div>
-
-      {/* Saved tables */}
+      {/* Saved plan tables */}
       {tables.length > 0 && (
-        <div className="ffcs-panel">
-          <div className="flex items-center gap-2 mb-3">
-            <Layers className="h-4 w-4 text-zinc-500" />
-            <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Your plans</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {tables.map((t) => (
-              <div key={t.id} className={`ffcs-table-chip ${t.id === activeId ? 'active' : ''}`}>
-                <button className="ffcs-table-chip-name" onClick={() => setActiveId(t.id)} title="Switch to this plan">{t.name}</button>
-                <span className="ffcs-table-chip-count">{t.sections.length}</span>
-                <button className="ffcs-table-chip-action" onClick={() => renameTable(t.id)} aria-label={`Rename ${t.name}`}>✎</button>
-                <button className="ffcs-table-chip-action" onClick={() => deleteTable(t.id)} aria-label={`Delete ${t.name}`}>✕</button>
-              </div>
-            ))}
-            <button onClick={createTable} className="ffcs-table-add"><Plus className="h-3.5 w-3.5" /> New plan</button>
-          </div>
-        </div>
-      )}
-
-      {/* Share / compare panels */}
-      {showShare && (
-        <div className="ffcs-panel">
-          <h3 className="text-sm font-bold text-zinc-900 mb-3">Share this plan</h3>
-          <p className="text-[11px] text-zinc-500 mb-3">Copy this code and send it to a friend — they can paste it under “Compare with Friend”.</p>
-          <div className="flex items-start gap-3">
-            <textarea readOnly aria-label="Your FFCS plan share code" value={shareText} rows={6} className="flex-1 px-3 py-2.5 bg-white border border-zinc-200 rounded-xl text-[11px] font-mono text-zinc-900 outline-none resize-y" />
-            <button onClick={() => void copyShare()} className="px-4 py-2 rounded-xl acc-bg text-zinc-900 text-xs font-bold acc-glow hover:opacity-90 transition cursor-pointer flex items-center gap-1.5">
-              <Copy className="h-3.5 w-3.5" /> {copied ? 'Copied!' : 'Copy'}
+        <section className="uc-plate">
+          <div className="uc-plate-head">
+            <span className="uc-cap">Your plans</span>
+            <button type="button" onClick={createTable} className="uc-ffcs-add">
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" /> New plan
             </button>
           </div>
-        </div>
+          <div className="uc-ffcs-chips">
+            {tables.map((t) => (
+              <div key={t.id} className={`uc-ffcs-chip ${t.id === activeId ? 'is-on' : ''}`}>
+                {renamingId === t.id ? (
+                  <input
+                    autoFocus
+                    className="uc-ffcs-chip-input"
+                    value={renameDraft}
+                    maxLength={40}
+                    aria-label={`New name for ${t.name}`}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                      if (e.key === 'Escape') setRenamingId(null);
+                    }}
+                    onBlur={commitRename}
+                  />
+                ) : (
+                  <button type="button" className="uc-ffcs-chip-name" onClick={() => setActiveId(t.id)} title="Switch to this plan">{t.name}</button>
+                )}
+                <span className="uc-ffcs-chip-count uc-num">{t.sections.length}</span>
+                <button type="button" className="uc-ffcs-chip-act uc-ffcs-chip-act--edit" onClick={() => startRename(t.id)} aria-label={`Rename ${t.name}`}>
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                </button>
+                <button type="button" className="uc-ffcs-chip-act uc-ffcs-chip-act--del" onClick={() => deleteTable(t.id)} aria-label={`Delete ${t.name}`}>
+                  <X className="h-3 w-3" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
+      {/* Share */}
+      {showShare && (
+        <section className="uc-plate">
+          <div className="uc-plate-head">
+            <div>
+              <span className="uc-cap">Share</span>
+              <h3 className="uc-ffcs-h3">Send this plan</h3>
+              <p className="uc-note">Copy the code and send it to a friend — they paste it under “Compare with a friend”.</p>
+            </div>
+          </div>
+          <div className="uc-ffcs-pick">
+            <div className="uc-ffcs-copy">
+              <textarea readOnly aria-label="Your FFCS plan share code" value={shareText} rows={6} className="uc-dir-input uc-dir-input--area" />
+              <button type="button" onClick={() => void copyShare()} className="uc-dir-go acc-bg">
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" /> {copied ? 'Copied' : 'Copy code'}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Compare */}
       {showCompare && (
-        <div className="ffcs-panel">
-          <h3 className="text-sm font-bold text-zinc-900 mb-3">Compare with a friend</h3>
-          <textarea
-            aria-label="Friend's FFCS plan code"
-            value={friendText}
-            onChange={(e) => { setFriendText(e.target.value); setCompareError(null); }}
-            rows={5}
-            placeholder={`Paste their plan code here (starts with ${PLAN_PREFIX})…`}
-            className="w-full px-3 py-2.5 bg-white border border-zinc-200 rounded-xl text-[11px] font-mono text-zinc-900 outline-none focus:border-blue-500/60 transition resize-y"
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <button onClick={runCompare} className="px-4 py-2 rounded-xl acc-bg text-zinc-900 text-xs font-bold acc-glow hover:opacity-90 transition cursor-pointer">Compare</button>
-            {compareError && (
-              <span className="text-[11px] text-rose-600">{compareError}</span>
+        <section className="uc-plate">
+          <div className="uc-plate-head">
+            <div>
+              <span className="uc-cap">Compare</span>
+              <h3 className="uc-ffcs-h3">Compare with a friend</h3>
+              <p className="uc-note">Paste their plan code to see which of their sections clash with your schedule.</p>
+            </div>
+          </div>
+          <div className="uc-ffcs-pick">
+            <textarea
+              aria-label="Friend's FFCS plan code"
+              value={friendText}
+              onChange={(e) => { setFriendText(e.target.value); setCompareError(null); }}
+              rows={5}
+              placeholder={`Paste their plan code here (starts with ${PLAN_PREFIX})…`}
+              className="uc-dir-input uc-dir-input--area"
+            />
+            <div className="uc-ffcs-ends">
+              <button type="button" onClick={runCompare} className="uc-dir-go acc-bg">Compare</button>
+              {compareError && <span className="uc-ffcs-error" role="status">{compareError}</span>}
+            </div>
+            {comparison.length > 0 && (
+              <div className="uc-ffcs-cmpwrap">
+                <span className="uc-cap">
+                  {comparison.length} section{comparison.length > 1 ? 's' : ''} in their plan
+                </span>
+                <div className="uc-ffcs-cmps">
+                  {comparison.map((c) => (
+                    <div key={c.entry.id} className="uc-ffcs-cmp">
+                      <span className="uc-ffcs-cmp-code uc-num">{c.entry.code}</span>
+                      <span className="uc-ffcs-cmp-title">{c.entry.title}</span>
+                      <span className="uc-ffcs-cmp-slot uc-num">{c.entry.slot}</span>
+                      {c.sameAsPlan ? (
+                        <span className="uc-ffcs-cmp-state is-same"><Layers className="h-3 w-3" aria-hidden="true" /> Also in your plan</span>
+                      ) : c.hitsMine ? (
+                        <span className="uc-ffcs-cmp-state is-bad"><AlertTriangle className="h-3 w-3" aria-hidden="true" /> Clashes with your schedule</span>
+                      ) : (
+                        <span className="uc-ffcs-cmp-state is-ok"><CheckCircle2 className="h-3 w-3" aria-hidden="true" /> No clash</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
-          {comparison.length > 0 && (
-            <div className="mt-5 space-y-2">
-              <p className="text-[11px] text-zinc-500">{comparison.length} section{comparison.length > 1 ? 's' : ''} in your friend's plan:</p>
-              {comparison.map((c) => (
-                <div key={c.entry.id} className="flex items-center gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs">
-                  <span className="font-mono font-bold text-zinc-900 shrink-0">{c.entry.code}</span>
-                  <span className="text-zinc-500 truncate flex-1">{c.entry.title}</span>
-                  <span className="text-zinc-500 shrink-0 font-mono">{c.entry.slot}</span>
-                  {c.sameAsPlan ? (
-                    <span className="inline-flex items-center gap-1 text-zinc-600 shrink-0"><Layers className="h-3.5 w-3.5" /> Also in your plan</span>
-                  ) : c.hitsMine ? (
-                    <span className="inline-flex items-center gap-1 text-rose-600 shrink-0"><AlertTriangle className="h-3.5 w-3.5" /> Clashes with your schedule</span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-emerald-600 shrink-0"><CheckCircle2 className="h-3.5 w-3.5" /> No clash</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        </section>
       )}
 
       {/* Course picker */}
-      <div className="ffcs-panel">
-        <h3 className="text-base font-bold text-zinc-900 mb-1">Add a course</h3>
-        <p className="text-[11px] text-zinc-500 mb-4">Search the inventory, then pick one of its offered sections (slot + faculty + venue).</p>
-        <div className="relative">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <input
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setPickedCode(null); }}
-            placeholder="Course code or title — e.g. BEEE or Analog Electronics"
-            className="w-full pl-9 pr-3 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-500 outline-none focus:border-blue-500/60 transition"
-            aria-label="Search courses"
-          />
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <div>
+            <span className="uc-cap">Course inventory</span>
+            <h3 className="uc-ffcs-h3">Add a course</h3>
+            <p className="uc-note">Search the snapshot, then pick one of its offered sections — slot, faculty and venue.</p>
+          </div>
+        </div>
+
+        <div className="uc-ffcs-pick">
+          <div className="uc-dir-search">
+            <Search className="h-4 w-4" aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setPickedCode(null); }}
+              placeholder="Course code or title — e.g. BEEE or Analog Electronics"
+              aria-label="Search courses"
+            />
+          </div>
         </div>
 
         {query.trim() && !pickedCode && (
-          <div className="mt-2 border border-zinc-200 rounded-xl divide-y divide-zinc-100 max-h-64 overflow-y-auto">
-            {suggestions.length === 0 && <p className="px-3 py-3 text-xs text-zinc-500">No course in the inventory matches “{query.trim()}”.</p>}
+          <div className="uc-ffcs-suggest">
+            {suggestions.length === 0 && (
+              <p className="uc-ffcs-sug-none">No course in the inventory matches “{query.trim()}”.</p>
+            )}
             {suggestions.map((o) => (
-              <button key={o.code} onClick={() => { setPickedCode(o.code); setQuery(`${o.code} — ${o.title}`); }} className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 transition cursor-pointer flex items-center gap-3">
-                <span className="font-mono font-bold text-xs text-zinc-900 shrink-0">{o.code}</span>
-                <span className="text-xs text-zinc-900 truncate flex-1">{o.title}</span>
-                <span className="text-[10px] text-zinc-500 shrink-0">{o.sectionCount} section{o.sectionCount > 1 ? 's' : ''}</span>
+              <button
+                type="button"
+                key={o.code}
+                onClick={() => { setPickedCode(o.code); setQuery(`${o.code} — ${o.title}`); }}
+                className="uc-ffcs-sug"
+              >
+                <span className="uc-ffcs-sug-code uc-num">{o.code}</span>
+                <span className="uc-ffcs-sug-title">{o.title}</span>
+                <span className="uc-ffcs-sug-n">{o.sectionCount} section{o.sectionCount > 1 ? 's' : ''}</span>
               </button>
             ))}
           </div>
         )}
 
         {pickedCode && (
-          <div className="mt-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Offered sections for {pickedCode}</p>
-              <button onClick={() => { setPickedCode(null); setQuery(''); }} className="text-[11px] text-zinc-500 hover:text-zinc-900 cursor-pointer">clear</button>
+          <>
+            <div className="uc-ffcs-secthead">
+              <span className="uc-cap">Offered sections for {pickedCode}</span>
+              <button type="button" onClick={() => { setPickedCode(null); setQuery(''); }} className="uc-ffcs-clear">clear</button>
             </div>
-            {pickedSections.length === 0 && <p className="text-xs text-zinc-500 py-2">No sections of this course are in the snapshot.</p>}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            {pickedSections.length === 0 && (
+              <p className="uc-ffcs-none">No sections of this course are in the snapshot.</p>
+            )}
+            <div className="uc-ffcs-tiles">
               {pickedSections.map((s, i) => {
                 const candidate = toPlanSection(s);
                 const blocked = candidateConflicts(candidate).length > 0;
                 const meetings = expandSlotString(s.slot);
                 return (
                   <button
+                    type="button"
                     key={`${s.code}-${s.slot}-${i}`}
                     onClick={() => addSection(s)}
-                    className={`text-left p-3 rounded-xl border transition cursor-pointer ${blocked ? 'ffcs-section-tile blocked' : 'ffcs-section-tile'}`}
+                    className={`uc-ffcs-tile ${blocked ? 'is-blocked' : ''}`}
                     title={blocked ? 'Overlaps your registered timetable or plan' : 'Add to plan'}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono font-bold text-sm text-zinc-900">{s.slot}</span>
-                      <span className="text-[10px] font-bold text-zinc-500">{s.type}</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-900 mt-1 truncate">{s.faculty || 'Faculty not in snapshot'}</p>
-                    <p className="text-[10px] text-zinc-500 truncate">{s.venue || 'Venue not in snapshot'} · {s.credits} cr</p>
-                    <p className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1"><Clock3 className="h-3 w-3" /> {meetings.map((m) => `${DAY_SHORT[m.day] || m.day} ${m.start}`).join(', ') || 'Times not in slot grid'}</p>
-                    {blocked && <p className="text-[10px] text-rose-600 font-bold mt-1 flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> time conflict</p>}
+                    <span className="uc-ffcs-tile-head">
+                      <span className="uc-ffcs-tile-slot uc-num">{s.slot}</span>
+                      <span className="uc-ffcs-tile-type">{s.type}</span>
+                    </span>
+                    <span className="uc-ffcs-tile-line">{s.faculty || 'Faculty not in snapshot'}</span>
+                    <span className="uc-ffcs-tile-meta">{s.venue || 'Venue not in snapshot'} · {s.credits} cr</span>
+                    <span className="uc-ffcs-tile-when">
+                      <Clock3 className="h-3 w-3" aria-hidden="true" />
+                      {meetings.map((m) => `${DAY_SHORT[m.day] || m.day} ${m.start}`).join(', ') || 'Times not in slot grid'}
+                    </span>
+                    {blocked && (
+                      <span className="uc-ffcs-tile-bad">
+                        <AlertTriangle className="h-3 w-3" aria-hidden="true" /> time conflict
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
-          </div>
+          </>
         )}
-      </div>
+      </section>
 
       {/* Week grid */}
-      <div className="ffcs-panel">
-        <div className="flex items-center space-x-3 mb-5">
-          <div className="p-2 bg-violet-500/10 border border-violet-500/20 rounded-xl text-violet-600"><Calendar className="h-5 w-5" /></div>
+      <section className="uc-plate">
+        <div className="uc-plate-head uc-ffcs-head">
           <div>
-            <h3 className="text-base font-bold text-zinc-900">Week grid{activeTable ? ` — ${activeTable.name}` : ''}</h3>
-            <p className="text-[11px] text-zinc-500">
-              <span className="text-blue-600">■</span> registered &nbsp;·&nbsp; <span className="text-violet-600">■</span> planned &nbsp;·&nbsp; <span className="text-rose-600">■</span> clash
-            </p>
+            <span className="uc-cap">Week grid</span>
+            <h3 className="uc-ffcs-h3">{activeTable ? activeTable.name : 'No plan selected'}</h3>
           </div>
+          <span className="uc-ffcs-legend">
+            <span><i className="is-reg" aria-hidden="true" /> registered</span>
+            <span><i className="is-plan" aria-hidden="true" /> planned</span>
+            <span><i className="is-clash" aria-hidden="true" /> clash</span>
+          </span>
         </div>
 
         {!plan.length && !real.length ? (
-          <p className="text-sm text-zinc-500 py-6 text-center">Nothing to show yet — search a course above, or sync your VTOP timetable to see your registered sessions.</p>
+          <p className="uc-ffcs-blank">Nothing to show yet — search a course above, or sync your VTOP timetable to see your registered sessions.</p>
         ) : (
-          <div className="overflow-x-auto pb-2">
-            <table className="ffcs-grid" role="grid" aria-label="Planned week grid">
+          <div className="uc-ffcs-gridwrap">
+            <table className="uc-ffcs-grid" role="grid" aria-label="Planned week grid">
               <thead>
                 <tr>
-                  <th scope="col" className="ffcs-grid-time">Time</th>
-                  {DAY_ORDER.map((d) => <th scope="col" key={d} className="ffcs-grid-day">{DAY_SHORT[d]}</th>)}
+                  <th scope="col" className="uc-ffcs-t">Time</th>
+                  {DAY_ORDER.map((d) => <th scope="col" key={d}>{DAY_SHORT[d]}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {gridTimes.map((start) => {
                   const rowHasClash = DAY_ORDER.some((d) => cellAt(d, start).length > 1);
                   return (
-                    <tr key={start} className={rowHasClash ? 'ffcs-row-clash' : ''}>
-                      <td className="ffcs-grid-time">{start}</td>
+                    <tr key={start} className={rowHasClash ? 'uc-ffcs-row-clash' : ''}>
+                      <td className="uc-ffcs-t">{start}</td>
                       {DAY_ORDER.map((d) => {
                         const items = cellAt(d, start);
                         const meeting = items[0];
                         const isClash = items.length > 1 || items.some((it) => it.kind === 'plan' && planClashIds.has(it.sectionId));
+                        const kind = isClash ? 'is-clash' : meeting ? (meeting.kind === 'registered' ? 'is-reg' : 'is-plan') : '';
                         return (
-                          <td key={d} className={`ffcs-grid-cell ${isClash ? 'clash' : meeting ? (meeting.kind === 'registered' ? 'registered' : 'planned') : ''}`}>
+                          <td key={d} className={`uc-ffcs-cell ${kind}`}>
                             {items.slice(0, 2).map((it, idx) => (
-                              <div key={`${it.sectionId}-${idx}`} className="ffcs-grid-entry" title={it.slotToken || undefined}>
-                                <span className="ffcs-grid-code">{it.code}</span>
-                                {it.venue && <span className="ffcs-grid-venue">{it.venue}</span>}
-                              </div>
+                              <span key={`${it.sectionId}-${idx}`} className="uc-ffcs-entry" title={it.slotToken || undefined}>
+                                <span className="uc-ffcs-code uc-num">{it.code}</span>
+                                {it.venue && <span className="uc-ffcs-venue">{it.venue}</span>}
+                              </span>
                             ))}
-                            {items.length > 2 && <div className="ffcs-grid-more">+{items.length - 2} more</div>}
-                            {items.length === 1 && meeting && <div className="ffcs-grid-end">till {meeting.end}</div>}
+                            {items.length > 2 && <span className="uc-ffcs-more">+{items.length - 2} more</span>}
+                            {items.length === 1 && meeting && <span className="uc-ffcs-end">till {meeting.end}</span>}
                           </td>
                         );
                       })}
@@ -523,42 +632,40 @@ export const FfcsPlannerView: React.FC<FfcsPlannerViewProps> = ({ timetable }) =
             </table>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Plan list */}
+      {/* Planned sections */}
       {plan.length > 0 && (
-        <div className="ffcs-panel">
-          <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wide mb-3">Planned sections — {activeTable?.name || 'Plan'}</p>
-          <div className="space-y-2">
+        <section className="uc-plate">
+          <div className="uc-plate-head">
+            <span className="uc-cap">Planned sections — {activeTable?.name || 'Plan'}</span>
+            <span className="uc-num uc-ffcs-count">{plan.length}</span>
+          </div>
+          <div className="uc-ffcs-plans">
             {plan.map((p) => (
-              <div key={p.id} className={`flex items-center gap-3 p-2.5 border rounded-xl text-xs ${planClashIds.has(p.id) ? 'bg-rose-500/5 border-rose-500/30' : 'bg-zinc-50 border-zinc-200'}`}>
-                <span className="font-mono font-bold text-zinc-900">{p.code}</span>
-                <span className="text-zinc-900 truncate flex-1">{p.title}</span>
-                <span className="font-mono text-zinc-600">{p.slot}</span>
-                <span className="text-zinc-500 hidden sm:inline">{p.type}{p.credits ? ` · ${p.credits} cr` : ''}{p.venue ? ` · ${p.venue}` : ''}</span>
-                {planClashIds.has(p.id) && <span className="inline-flex items-center gap-1 text-rose-600 font-bold shrink-0"><AlertTriangle className="h-3.5 w-3.5" /> clash</span>}
-                <button onClick={() => removeSection(p.id)} className="p-1.5 rounded-lg text-zinc-600 hover:text-rose-600 hover:bg-rose-500/10 transition cursor-pointer" aria-label={`Remove ${p.code} ${p.slot}`}>
-                  <Trash2 className="h-3.5 w-3.5" />
+              <article key={p.id} className={`uc-ffcs-plan ${planClashIds.has(p.id) ? 'is-clash' : ''}`}>
+                <div className="uc-ffcs-plan-main">
+                  <b className="uc-ffcs-plan-code uc-num">{p.code}</b>
+                  <span className="uc-ffcs-plan-title">{p.title}</span>
+                  <span className="uc-ffcs-plan-slot uc-num">{p.slot}</span>
+                  {planClashIds.has(p.id) && (
+                    <span className="uc-ffcs-plan-clash"><AlertTriangle className="h-3 w-3" aria-hidden="true" /> clash</span>
+                  )}
+                  <span className="uc-ffcs-plan-meta">{p.type}{p.credits ? ` · ${p.credits} cr` : ''}{p.venue ? ` · ${p.venue}` : ''}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeSection(p.id)}
+                  className="uc-ffcs-remove"
+                  aria-label={`Remove ${p.code} ${p.slot}`}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>
-              </div>
+              </article>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
 };
-
-function Stat({ label, value, icon: Icon, color }: { label: string; value: string; icon: React.ElementType; color: string }) {
-  return (
-    <div className="bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3">
-      <div className={`p-2 rounded-xl bg-white border border-zinc-200 ${color}`}>
-        <Icon className="h-5 w-5" />
-      </div>
-      <div>
-        <p className="text-xl font-extrabold text-zinc-900 leading-none">{value}</p>
-        <p className="text-[10px] text-zinc-500 font-medium mt-1">{label}</p>
-      </div>
-    </div>
-  );
-}

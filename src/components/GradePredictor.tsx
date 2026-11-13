@@ -1,448 +1,646 @@
-import React, { useId, useMemo, useState } from 'react';
-import { TrendingUp, BarChart3, ShieldCheck } from 'lucide-react';
-import { CourseMarks } from '../types';
-import { buildCourseModel, projectCoursePercent, gradeFromVitPercent } from '../utils/gradeModel';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../lib/communityBackend';
-
 /**
- * Relative Grade Predictor (Part 4).
+ * Grade Predictor — what this semester is heading for, in one screen.
  *
- * Model: community-derived approximation of VIT's relative grading curve,
- * NOT VIT's official algorithm. Default cutoffs (unofficial estimate):
- *   S ≥ μ+1.5σ · A: μ+1σ..1.5σ · B: μ+0.5σ..1σ · C: μ−0.5σ..+0.5σ
- *   D: μ−1σ..−0.5σ · E: μ−1.5σ..−1σ · F below μ−1.5σ
+ * Four tiles answer the whole question (SGPA, CGPA, the letters, how much of
+ * this is actually known); the course list below lets a student change one FAT
+ * estimate and watch the grade, the SGPA and the CGPA move together. Every
+ * number comes from `gradeProjection`, which owns the scene and is the only
+ * place a letter is decided, so this panel cannot print a relative B above an
+ * absolute C for the same course.
  *
- * When a course has >=15 anonymous grade_submissions, empirical μ/σ replace
- * the defaults (fetched from the compute_grade_stats edge function, cached
- * in IndexedDB for 7 days).
- *
- * Privacy: submissions send ONLY { courseId, totalMarks, finalGrade } — no
- * student identifiers, no auth linkage (hard requirement).
+ * Nothing here is official. VTOP decides grades; this is a planning figure
+ * built on the weightage VTOP published and the marks it has returned.
  */
 
-export type LetterGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+import React, { useEffect, useId, useMemo, useState } from 'react';
+import { ChevronDown, Info, RotateCcw, TrendingUp, Users } from 'lucide-react';
+import type { CourseMarks, TimetableSlot } from '../types';
+import type { GradeHistory } from '../lib/vtop/types';
+import {
+  GRADE_ORDER,
+  GRADE_POINTS,
+  buildCourseModel,
+  gpaLabel,
+  projectedPercentLabel,
+} from '../utils/gradeModel';
+import {
+  SCENARIO_LABEL,
+  SCENARIO_ORDER,
+  SCENARIO_STEP,
+  cgpaOf,
+  gpaImpactOf,
+  projectCourse,
+  semesterGpaOf,
+  withScenario,
+  type Confidence,
+  type CourseProjection,
+  type Scenario,
+} from '../utils/gradeProjection';
+import {
+  MIN_COHORT_SIZE,
+  cohortKeyOf,
+  contextOf,
+  fetchCohortStats,
+  readCohortStats,
+  type CohortKey,
+  type CohortStats,
+} from '../lib/gradeSharing';
+import type { ShareControl } from './GradePredictionPanel';
 
-const GRADE_ORDER: LetterGrade[] = ['S', 'A', 'B', 'C', 'D', 'E', 'F'];
-
-const GRADE_COLORS: Record<LetterGrade, string> = {
-  S: 'text-emerald-700 bg-emerald-500/15 border-emerald-500/30',
-  A: 'text-blue-700 bg-blue-500/15 border-blue-500/30',
-  B: 'text-teal-700 bg-teal-500/15 border-teal-500/30',
-  C: 'text-amber-700 bg-amber-500/15 border-amber-500/30',
-  D: 'text-orange-700 bg-orange-500/15 border-orange-500/30',
-  E: 'text-rose-700 bg-rose-500/15 border-rose-500/30',
-  F: 'text-rose-600 bg-rose-500/20 border-rose-500/40',
+const GRADE_TINT: Record<string, string> = {
+  S: 'uc-panel-safe',
+  A: 'uc-panel-safe',
+  B: 'uc-panel-safe',
+  C: 'uc-panel-warning',
+  D: 'uc-panel-warning',
+  E: 'uc-panel-warning',
+  F: 'uc-panel-critical',
+  N: 'uc-panel-unknown',
 };
 
-/** Normal CDF (Abramowitz–Stegun approximation). */
-export function normCdf(x: number): number {
-  const t = 1 / (1 + 0.2316419 * Math.abs(x));
-  const d = 0.3989422804014327 * Math.exp(-x * x / 2);
-  const p = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-  return x > 0 ? 1 - p : p;
+function gradeTint(grade: string | null): string {
+  return GRADE_TINT[(grade ?? '').trim().toUpperCase()] ?? 'uc-panel-unknown';
 }
 
-export function gradeFromScore(score: number, mu: number, sigma: number): LetterGrade {
-  const z = (score - mu) / sigma;
-  if (z >= 1.5) return 'S';
-  if (z >= 1.0) return 'A';
-  if (z >= 0.5) return 'B';
-  if (z >= -0.5) return 'C';
-  if (z >= -1.0) return 'D';
-  if (z >= -1.5) return 'E';
-  return 'F';
+const CONFIDENCE_LABEL: Record<Confidence, string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  none: 'Not enough data',
+};
+
+const CONFIDENCE_RANK: Record<Confidence, number> = { none: 0, low: 1, medium: 2, high: 3 };
+
+/** What the student typed for one course's assumed class curve. */
+interface ManualStats {
+  mean: string;
+  sd: string;
 }
 
-/**
- * Grade probability via normal CDF.
- *
- * Model: the student's projected total has uncertainty (the FAT score is
- * hypothetical), modeled as N(score, sigma). Each grade band is a range of
- * z-scores vs the class mean: S ≥ μ+1.5σ, A: +1σ..+1.5σ, etc. So
- *   P(S) = P(total ≥ μ + 1.5σ) = 1 − Φ((μ + 1.5σ − score) / σ)
- *   P(A) = P(μ+1σ ≤ total < μ+1.5σ), … and F below μ−1.5σ.
- */
-export function gradeProbabilities(score: number, mu: number, sigma: number): Record<LetterGrade, number> {
-  if (sigma <= 0) {
-    const g = gradeFromScore(score, mu, sigma);
-    const out = {} as Record<LetterGrade, number>;
-    for (const x of GRADE_ORDER) out[x] = x === g ? 1 : 0;
-    return out;
-  }
-  const above = (zBoundary: number) => 1 - normCdf((mu + zBoundary * sigma - score) / sigma);
-  const below = (zBoundary: number) => normCdf((mu + zBoundary * sigma - score) / sigma);
-  const out: Record<LetterGrade, number> = {
-    S: above(1.5),
-    A: above(1.0) - above(1.5),
-    B: above(0.5) - above(1.0),
-    C: above(-0.5) - above(0.5),
-    D: above(-1.0) - above(-0.5),
-    E: above(-1.5) - above(-1.0),
-    F: below(-1.5),
-  };
-  const sum = Object.values(out).reduce((a, b) => a + b, 0);
-  if (sum > 0) for (const g of GRADE_ORDER) out[g] = out[g] / sum;
-  return out;
+function manualReadingOf(manual: ManualStats | undefined): { count: number; mean: number; sd: number } | null {
+  if (!manual || manual.mean.trim() === '' || manual.sd.trim() === '') return null;
+  const mean = Number(manual.mean);
+  const sd = Number(manual.sd);
+  if (!Number.isFinite(mean) || mean < 0 || mean > 100) return null;
+  if (!Number.isFinite(sd) || sd <= 0) return null;
+  return { count: 0, mean, sd };
 }
 
-/** Deterministic PRNG (mulberry32) so Monte Carlo is reproducible per seed. */
-function mulberry32(seed: number) {
-  return () => {
-    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+function rangeLabel(row: CourseProjection): string {
+  if (row.publishedGrade) return 'VTOP';
+  if (!row.range) return 'no projection';
+  const [conservative, optimistic] = row.range;
+  return conservative === optimistic ? `likely ${conservative}` : `likely ${optimistic}–${conservative}`;
 }
-
-function randn(rand: () => number): number {
-  const u = Math.max(rand(), 1e-12);
-  const v = rand();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
-
-/**
- * Projected course percentage (0–100 of the weightage VTOP has declared).
- *
- * Every input is VTOP's own: each row contributes its declared Weightage %
- * (its Weightage Mark when VTOP published one), theory and lab classes are
- * blended by their registered credits, and a row VTOP has not graded is
- * projected at the student's current pace instead of being counted as a zero.
- * Nothing reserves marks for attendance that VTOP never published, and nothing
- * imposes a 50/40/10 regulation split on a course that weights differently.
- */
-export function projectedTotal(m: CourseMarks, fatScore: number): number {
-  const percent = projectCoursePercent(buildCourseModel(m), {
-    fatPercent: Math.min(100, Math.max(0, fatScore)),
-  });
-  return Math.min(100, Math.max(0, percent ?? 0));
-}
-
-// ---------------------------------------------------------------------------
-// Empirical stats cache (IndexedDB, 7-day TTL)
-// ---------------------------------------------------------------------------
-
-interface EmpiricalStats {
-  courseId: string;
-  count: number;
-  mu: number;
-  sigma: number;
-  fetchedAt: number;
-}
-
-const STATS_KEY = (courseId: string) => `gradeStats:${courseId}`;
-
-async function getCachedEmpiricalStats(courseId: string): Promise<EmpiricalStats | null> {
-  try {
-    const raw = localStorage.getItem(STATS_KEY(courseId));
-    if (!raw) return null;
-    const s = JSON.parse(raw) as EmpiricalStats;
-    if (Date.now() - s.fetchedAt > 7 * 24 * 3600 * 1000) return null;
-    return s;
-  } catch { return null; }
-}
-
-async function fetchEmpiricalStats(courseId: string): Promise<EmpiricalStats | null> {
-  try {
-    const url = `${SUPABASE_URL}/functions/v1/compute_grade_stats?courseId=${encodeURIComponent(courseId)}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || !data.count || data.count < 15 || data.mu == null || data.sigma == null) return null;
-    const stats: EmpiricalStats = { courseId, count: data.count, mu: data.mu, sigma: data.sigma, fetchedAt: Date.now() };
-    try { localStorage.setItem(STATS_KEY(courseId), JSON.stringify(stats)); } catch { /* ignore */ }
-    return stats;
-  } catch { return null; }
-}
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 
 interface GradePredictorProps {
   marks: CourseMarks[];
+  /** VTOP register number — decides the theory/lab rule and the batch's regulation. */
+  regNo?: string;
+  /** Timetable rows, the only source of a course's faculty for the class cohort. */
+  timetable?: TimetableSlot[];
+  /** The selected semester — the term a shared mark belongs to. */
+  semesterId?: string;
+  /** VTOP's published CGPA and earned credits, the denominators a CGPA rides. */
+  cumulativeCgpa?: number | null;
+  cumulativeCreditsEarned?: number | null;
+  gradeHistory?: GradeHistory | null;
+  /** Course code → the letter VTOP has already posted for it. */
+  publishedGrades?: Record<string, string>;
+  /** Course code → registered credits, when the marks record carries none. */
+  creditsByCourse?: Record<string, number>;
+  share?: ShareControl;
 }
 
-export const GradePredictor: React.FC<GradePredictorProps> = ({ marks }) => {
-  // Stable, collision-free ids so every control here is programmatically
-  // associated with its visible label (screen readers announce "Course,
-  // combobox" instead of an unnamed select).
+export const GradePredictor: React.FC<GradePredictorProps> = ({
+  marks,
+  regNo,
+  timetable,
+  semesterId,
+  cumulativeCgpa,
+  cumulativeCreditsEarned,
+  gradeHistory,
+  publishedGrades,
+  creditsByCourse,
+  share,
+}) => {
   const uid = useId();
-  const courseFieldId = `${uid}-course`;
-  const fatFieldId = `${uid}-fat`;
-  const muFieldId = `${uid}-mu`;
-  const sigmaFieldId = `${uid}-sigma`;
-  const [selectedCode, setSelectedCode] = useState<string>(marks[0]?.courseCode || '');
-  const [fatScore, setFatScore] = useState(60);
-  const [mu, setMu] = useState(58);
-  const [sigma, setSigma] = useState(12);
-  const [empirical, setEmpirical] = useState<EmpiricalStats | null>(null);
-  const [loadingStats, setLoadingStats] = useState(false);
-  const [showConsent, setShowConsent] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const shareLabelId = `${uid}-share`;
+  const [scenario, setScenario] = useState<Scenario>('expected');
+  const [openCode, setOpenCode] = useState<string | null>(null);
+  /** Course code → the FAT percentage the student expects. */
+  const [fatEdits, setFatEdits] = useState<Record<string, number>>({});
+  /** Course code → a class curve the student typed. Never mixed with class data. */
+  const [manual, setManual] = useState<Record<string, ManualStats>>({});
+  const [cohort, setCohort] = useState<{ loading: boolean; stats: Record<string, CohortStats | null> }>({
+    loading: false,
+    stats: {},
+  });
 
-  const course = marks.find((m) => m.courseCode === selectedCode) || marks[0];
+  // One cohort request per course, keyed by everything that makes two classes
+  // comparable. A course with no term or batch has no cohort to ask about.
+  const cohortTargets = useMemo(() => marks.flatMap((course) => {
+    const context = contextOf(course, timetable ?? [], { term: semesterId, regNo });
+    if (!context.term || !context.regulation) return [];
+    const model = buildCourseModel(course, { regNo });
+    const component = (model.parts.theory?.gradedWeight ?? 0) > 0 ? 'theory' : 'lab';
+    const key: CohortKey = { courseCode: course.courseCode, ...context, component, stage: 'internal' };
+    return [{ courseCode: course.courseCode, key }];
+  }), [marks, timetable, semesterId, regNo]);
+  const cohortSignature = cohortTargets.map((t) => cohortKeyOf(t.key)).join('~');
 
-  // Load empirical stats for the selected course when >=15 submissions exist.
-  React.useEffect(() => {
-    if (!course) return;
+  useEffect(() => {
+    if (!cohortTargets.length) {
+      setCohort({ loading: false, stats: {} });
+      return undefined;
+    }
     let cancelled = false;
-    setLoadingStats(true);
-    getCachedEmpiricalStats(course.courseCode).then((cached) => {
-      if (cancelled) return;
-      if (cached) { setEmpirical(cached); setLoadingStats(false); return; }
-      fetchEmpiricalStats(course.courseCode).then((s) => {
-        if (!cancelled) { setEmpirical(s); setLoadingStats(false); }
-      });
+    setCohort({ loading: true, stats: {} });
+    void Promise.all(cohortTargets.map(async ({ courseCode, key }) => {
+      try {
+        return [courseCode, await fetchCohortStats(key)] as const;
+      } catch {
+        return [courseCode, null] as const;
+      }
+    })).then((entries) => {
+      if (!cancelled) setCohort({ loading: false, stats: Object.fromEntries(entries) });
     });
     return () => { cancelled = true; };
-  }, [course?.courseCode]);
+    // cohortSignature is the content of cohortTargets; the array identity is not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cohortSignature]);
 
-  const effectiveMu = empirical?.mu ?? mu;
-  const effectiveSigma = empirical?.sigma ?? sigma;
+  const projections = useMemo(() => marks.map((course) => {
+    const typed = manualReadingOf(manual[course.courseCode]);
+    const stats = cohort.stats[course.courseCode];
+    const fromClass = stats && !stats.suppressed && stats.mean !== null && stats.sd !== null
+      && stats.count >= MIN_COHORT_SIZE
+      ? { count: stats.count, mean: stats.mean, sd: stats.sd, source: 'class' as const }
+      : null;
+    const classStats = typed ? { ...typed, source: 'manual' as const } : fromClass;
+    return projectCourse(course, {
+      regNo,
+      classStats,
+      publishedGrade: publishedGrades?.[course.courseCode] ?? null,
+      fatPercent: fatEdits[course.courseCode] ?? null,
+    });
+  }), [marks, regNo, publishedGrades, fatEdits, manual, cohort.stats]);
 
-  const model = useMemo(() => (course ? buildCourseModel(course) : null), [course]);
-  const total = model
-    ? Math.min(100, Math.max(0, projectCoursePercent(model, { fatPercent: fatScore }) ?? 0))
-    : 0;
-  // Rows VTOP declared but has not graded. The projection holds them at the
-  // student's own pace, so name what is missing rather than letting one number
-  // imply the whole course is already known. FAT rows are excluded because the
-  // slider above is the user's own assumption about that paper.
-  const ungradedInternals: string[] = model
-    ? model.pendingTitles.filter((t) => !/\bFAT\b/i.test(t))
-    : [];
-  const probs = useMemo(() => gradeProbabilities(total, effectiveMu, effectiveSigma), [total, effectiveMu, effectiveSigma]);
-  const projectedGrade = gradeFromScore(total, effectiveMu, effectiveSigma);
-  // VIT's published absolute bands, applied to the same score — the honest
-  // counterpart to the community curve above.
-  const vitGrade = gradeFromVitPercent(total);
+  // The one reading the tiles and the course rows both show: the selected
+  // scenario, so a student who picks "conservative" sees a conservative SGPA.
+  const rows = useMemo(
+    () => projections.map((row) => withScenario(row, scenario)),
+    [projections, scenario],
+  );
 
-  // Monte Carlo: 1000 FAT outcomes around the user's expected score.
-  const monteCarlo = useMemo(() => {
-    if (!course || !model) return null;
-    const rand = mulberry32(course.courseCode.split('').reduce((a, c) => a + c.charCodeAt(0), 7));
-    const counts: Record<LetterGrade, number> = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
-    for (let i = 0; i < 1000; i++) {
-      const sample = fatScore + randn(rand) * 8; // ±8-point spread around expected
-      const projected = projectCoursePercent(model, { fatPercent: sample }) ?? 0;
-      const g = gradeFromScore(Math.min(100, Math.max(0, projected)), effectiveMu, effectiveSigma);
-      counts[g] += 1;
-    }
-    const out = {} as Record<LetterGrade, number>;
-    for (const g of GRADE_ORDER) out[g] = counts[g] / 1000;
-    return out;
-  }, [course, model, fatScore, effectiveMu, effectiveSigma]);
+  const semester = useMemo(() => semesterGpaOf(rows, creditsByCourse ?? {}), [rows, creditsByCourse]);
+  const impacts = useMemo(() => gpaImpactOf(rows, creditsByCourse ?? {}), [rows, creditsByCourse]);
 
-  if (!course) {
+  const history = useMemo(() => (
+    gradeHistory?.effectiveGrades?.map((g) => ({ credits: g.creditsEarned, grade: g.grade })) ?? null
+  ), [gradeHistory]);
+  const previousCgpa = cumulativeCgpa ?? gradeHistory?.cgpa ?? null;
+  const previousCredits = cumulativeCreditsEarned ?? gradeHistory?.creditsEarned ?? null;
+  const cgpa = useMemo(
+    () => cgpaOf({ semester, history, previousCgpa, previousCredits }),
+    [semester, history, previousCgpa, previousCredits],
+  );
+
+  const counted = rows.filter((r) => r.counted);
+  const compared = counted.filter((r) => r.basis === 'relative').length;
+  const openCourses = counted.filter((r) => r.pending.length > 0).length;
+  const overall = counted.reduce<Confidence>(
+    (worst, r) => (CONFIDENCE_RANK[r.confidence] < CONFIDENCE_RANK[worst] ? r.confidence : worst),
+    'high',
+  );
+  const tally = GRADE_ORDER
+    .map((g) => [g, counted.filter((r) => r.grade === g).length] as const)
+    .filter(([, n]) => n > 0);
+
+  const hasCustom = Object.keys(fatEdits).length > 0
+    || Object.keys(manual).length > 0;
+
+  const setFat = (code: string, value: number) => {
+    if (!Number.isFinite(value)) return;
+    setFatEdits((prev) => ({ ...prev, [code]: Math.min(100, Math.max(0, Math.round(value))) }));
+  };
+  const setManualValue = (code: string, field: keyof ManualStats, value: string) => {
+    setManual((prev) => ({
+      ...prev,
+      [code]: { mean: '', sd: '', ...prev[code], [field]: value },
+    }));
+  };
+  const reset = () => {
+    setFatEdits({});
+    setManual({});
+  };
+
+  if (!marks.length) {
     return (
-      <div className="p-6 rounded-2xl bg-zinc-50 border border-zinc-200 text-center text-sm text-zinc-500">
-        Sync marks first to use the grade predictor.
+      <div className="uc-empty">
+        <TrendingUp size={20} aria-hidden="true" />
+        <strong>No marks to predict from</strong>
+        <p>Sync your VTOP marks first — the predictor works from your CAT, DA and quiz marks.</p>
       </div>
     );
   }
 
-  const handleSubmit = async () => {
-    try {
-      // Anonymous submission — NO identifiers, NO auth linkage (hard rule).
-      const url = `${SUPABASE_URL}/rest/v1/grade_predictions`;
-      await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({ course_id: course.courseCode, total_marks: Math.round(total), final_grade: projectedGrade }),
-      });
-      setSubmitted(true);
-      setShowConsent(false);
-      // Invalidate cache so a re-fetch can pick up the new submission.
-      try { localStorage.removeItem(STATS_KEY(course.courseCode)); } catch { /* ignore */ }
-    } catch {
-      setSubmitted(false);
-      setShowConsent(false);
-      alert('Submission failed — check your connection and try again.');
-    }
-  };
-
   return (
-    <div className="space-y-5">
-      <div className="flex items-center space-x-3">
-        <div className="p-2.5 bg-violet-500/10 border border-violet-500/20 rounded-2xl text-violet-600">
-          <TrendingUp className="h-5 w-5" />
-        </div>
-        <div>
-          <h4 className="text-base font-bold text-zinc-900">Relative Grade Predictor</h4>
-          <p className="text-[11px] text-zinc-500">
-            Community model — <span className="text-amber-700 font-semibold">not VIT's official algorithm</span>.
-          </p>
-        </div>
-      </div>
-
-      {/* Course + FAT score */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label htmlFor={courseFieldId} className="block text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest mb-1.5">Course</label>
-          <select
-            id={courseFieldId}
-            value={course.courseCode}
-            onChange={(e) => { setSelectedCode(e.target.value); setSubmitted(false); }}
-            className="w-full bg-white border border-zinc-200 rounded-xl p-2.5 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-          >
-            {marks.map((m) => <option key={m.courseCode} value={m.courseCode}>{m.courseCode}: {m.courseTitle}</option>)}
-          </select>
-        </div>
-        <div>
-          <label htmlFor={fatFieldId} className="block text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest mb-1.5">
-            Hypothetical FAT score: <span className="text-violet-700">{fatScore}/100</span>
-          </label>
-          <input
-            id={fatFieldId}
-            type="range" min={0} max={100} value={fatScore}
-            onChange={(e) => setFatScore(parseInt(e.target.value, 10))}
-            className="w-full accent-violet-500"
-          />
-        </div>
-      </div>
-
-      {/* μ/σ controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label htmlFor={muFieldId} className="block text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest mb-1.5">
-            Assumed mean (μ): <span className="text-violet-700">{effectiveMu}</span>
-            {empirical ? ` (from ${empirical.count} submissions)` : ' (default estimate)'}
-          </label>
-          <input id={muFieldId} type="range" min={30} max={90} value={effectiveMu} disabled={!!empirical}
-            onChange={(e) => setMu(parseInt(e.target.value, 10))}
-            className="w-full accent-violet-500 disabled:opacity-40" />
-        </div>
-        <div>
-          <label htmlFor={sigmaFieldId} className="block text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest mb-1.5">
-            Assumed std dev (σ): <span className="text-violet-700">{effectiveSigma}</span>
-            {empirical ? ' (empirical)' : ' (default estimate)'}
-          </label>
-          <input id={sigmaFieldId} type="range" min={4} max={25} value={effectiveSigma} disabled={!!empirical}
-            onChange={(e) => setSigma(parseInt(e.target.value, 10))}
-            className="w-full accent-violet-500 disabled:opacity-40" />
-        </div>
-      </div>
-
-      {empirical && (
-        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 text-xs flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 shrink-0" />
-          Based on {empirical.count} anonymous real submissions (μ={empirical.mu.toFixed(1)}, σ={empirical.sigma.toFixed(1)}).
-        </div>
-      )}
-      {loadingStats && <p className="text-[10px] text-zinc-500">Checking for community grade data…</p>}
-
-      {/* Projected total + grade */}
-      <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest">Projected total</p>
-            <p className="text-2xl font-black text-zinc-900 mt-0.5">{total.toFixed(1)}<span className="text-sm text-zinc-500">/100</span></p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest">Projected grade</p>
-            <span className={`inline-block mt-1 px-3 py-1 text-lg font-black rounded-xl border ${GRADE_COLORS[projectedGrade]}`}>{projectedGrade}</span>
-          </div>
-        </div>
-        <div className="mt-3 pt-3 border-t border-zinc-200 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-zinc-500">
-          <p>
-            {model?.credits
-              ? <>Registered credits: <span className="font-bold text-zinc-700">{model.credits}</span>{model.isEmbedded && model.theoryCredits && model.labCredits ? ` (${model.theoryCredits} theory + ${model.labCredits} lab)` : ''}</>
-              : 'Registered credits not synced yet — re-sync to weight theory and lab properly.'}
-          </p>
-          <p className="sm:text-right">
-            VTOP weightage published: <span className="font-bold text-zinc-700">{model ? Math.round(model.configuredWeight) : 0}%</span>
-            {vitGrade ? <> · VIT's bands put this at <span className="font-bold text-zinc-700">{vitGrade}</span></> : null}
-          </p>
-        </div>
-        {model?.weightsUndeclared && (
-          <p className="mt-2 text-[10px] leading-relaxed text-amber-700">
-            VTOP has not published any assessment weightage for this course yet, so this total cannot be
-            weighted — it is not a prediction of your grade.
-          </p>
-        )}
-        {ungradedInternals.length > 0 && (
-          <p className="mt-3 pt-3 border-t border-zinc-200 text-[10px] leading-relaxed text-zinc-500">
-            {ungradedInternals.join(', ')} {ungradedInternals.length === 1 ? 'has' : 'have'} not been graded by VTOP yet.
-            This projection assumes you score {ungradedInternals.length === 1 ? 'it' : 'them'} at your current average —
-            {model?.pendingWeight ? ` that is ${Math.round(model.pendingWeight)}% of the course weightage` : ''} — and is not a promise.
-          </p>
-        )}
-      </div>
-
-      {/* Probability bars (Monte Carlo) */}
-      <div>
-        <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-          <BarChart3 className="h-3.5 w-3.5" /> Grade probability (1000 simulated FAT outcomes)
+    <div className="uc-pred">
+      <div className="uc-pred-bar">
+        <p className="uc-note">
+          A planning estimate from your own marks. VTOP decides your official grade.
         </p>
-        <div className="space-y-2">
-          {GRADE_ORDER.map((g) => {
-            const p = (monteCarlo?.[g] ?? probs[g]) * 100;
-            return (
-              <div key={g} className="flex items-center gap-3">
-                <span className={`w-8 text-center text-xs font-black px-1.5 py-0.5 rounded border ${GRADE_COLORS[g]}`}>{g}</span>
-                <div className="flex-1 h-4 bg-white rounded-full border border-zinc-200 overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-500 ${g === projectedGrade ? 'bg-violet-500' : 'bg-zinc-200'}`}
-                    style={{ width: `${Math.max(0.5, p)}%` }} />
-                </div>
-                <span className="w-12 text-right text-xs font-mono text-zinc-900">{p.toFixed(1)}%</span>
-              </div>
-            );
-          })}
-        </div>
-        <p className="text-[9px] text-zinc-600 mt-1">Band model: S ≥ μ+1.5σ · A μ+1σ–1.5σ · B μ+0.5σ–1σ · C μ±0.5σ · D/E · F below μ−1.5σ. Unofficial community estimate.</p>
+        {hasCustom && (
+          <button type="button" className="uc-pred-reset" onClick={reset}>
+            <RotateCcw size={13} aria-hidden="true" /> Reset estimates
+          </button>
+        )}
       </div>
 
-      {/* Anonymous submission */}
-      {submitted ? (
-        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 text-xs flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 shrink-0" /> Thank you — your anonymous grade data helps improve predictions for everyone.
+      <div className="uc-pred-tiles">
+        <div className="uc-pred-tile">
+          <span>Predicted SGPA</span>
+          <b className="uc-num">{semester.sgpa === null ? '—' : gpaLabel(semester.sgpa)}</b>
+          <p>
+            {semester.courses > 0
+              ? `${semester.courses} course${semester.courses === 1 ? '' : 's'} · ${semester.credits} credits counted`
+              : 'No course has a grade to count yet'}
+          </p>
         </div>
-      ) : (
-        <button
-          onClick={() => setShowConsent(true)}
-          className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-zinc-900 text-xs font-extrabold transition cursor-pointer"
-        >
-          Help improve predictions — anonymously submit this grade
-        </button>
+        <div className="uc-pred-tile">
+          <span>Predicted CGPA</span>
+          <b className="uc-num">
+            {cgpa.cgpa === null ? '—' : <>{cgpa.mode === 'approximate' ? '≈ ' : ''}{gpaLabel(cgpa.cgpa)}</>}
+          </b>
+          <p>{previousCgpa !== null ? `VTOP now ${gpaLabel(previousCgpa)}` : 'No published CGPA yet'}</p>
+        </div>
+        <div className="uc-pred-tile">
+          <span>Expected grades</span>
+          {tally.length > 0 ? (
+            <p className="uc-pred-tally">
+              {tally.map(([g, n]) => (
+                <i key={g} className={`uc-pred-grade ${gradeTint(g)}`}>{g} × {n}</i>
+              ))}
+            </p>
+          ) : (
+            <b>—</b>
+          )}
+          <p>{counted.length} course{counted.length === 1 ? '' : 's'} counted</p>
+        </div>
+        <div className="uc-pred-tile">
+          <span>Prediction confidence</span>
+          <b>{CONFIDENCE_LABEL[overall]}</b>
+          <p>
+            {compared} of {counted.length} compared with your class · {openCourses} still being assessed
+          </p>
+        </div>
+      </div>
+
+      {cgpa.note && <p className="uc-pred-sub">{cgpa.note}</p>}
+      {semester.excluded.length > 0 && (
+        <p className="uc-pred-sub">
+          Left out of the GPA: {semester.excluded.map((e) => e.courseCode).join(', ')} — {semester.excluded[0].reason}.
+        </p>
+      )}
+      {semester.missingCredits.length > 0 && (
+        <p className="uc-pred-sub">
+          No credits synced for {semester.missingCredits.join(', ')}, so they are left out rather than weighted as
+          a guess.
+        </p>
+      )}
+      {semester.missingGrades.length > 0 && (
+        <p className="uc-pred-sub">
+          Nothing graded yet in {semester.missingGrades.join(', ')} — left out, never counted as an F.
+        </p>
       )}
 
-      {/* Consent modal */}
-      {showConsent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-50 backdrop-blur-md">
-          <div className="w-full max-w-md bg-white border border-zinc-200 rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-600"><ShieldCheck className="h-5 w-5" /></div>
-              <h4 className="text-base font-extrabold text-zinc-900">Help improve grade predictions</h4>
-            </div>
-            <div className="text-xs text-zinc-900 space-y-2 leading-relaxed">
-              <p>Your submitted marks are <strong className="text-zinc-900">completely anonymous</strong> and used only to help other VIT students make better grade predictions. Your student ID or personal info is <strong className="text-zinc-900">never stored</strong>.</p>
-              <p>We collect: <strong className="text-emerald-700">course + total marks + final grade (letter)</strong></p>
-              <p>We do NOT collect: <strong className="text-rose-700">your name, student ID, email, or any identifying info</strong></p>
-              <div className="p-3 bg-white rounded-xl border border-zinc-200 font-mono text-[10px] text-zinc-500">
-                {course.courseCode} · {Math.round(total)}/100 · Grade {projectedGrade}
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
+      <div className="uc-seg" role="group" aria-label="FAT scenario">
+        {SCENARIO_ORDER.map((s) => (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={scenario === s}
+            className={scenario === s ? 'is-on' : ''}
+            onClick={() => setScenario(s)}
+          >
+            {SCENARIO_LABEL[s]}
+          </button>
+        ))}
+      </div>
+      <p className="uc-pred-sub">
+        Expected uses the FAT estimate you set for each course — your own internal pace until you move it.
+        Conservative and optimistic are {SCENARIO_STEP} points either side, and all three move the grades, the
+        SGPA and the CGPA together.
+      </p>
+
+      <div className="uc-pred-list">
+        {rows.map((row, i) => {
+          const open = openCode === row.courseCode;
+          const panelId = `${uid}-detail-${i}`;
+          const fatId = `${uid}-fat-${i}`;
+          const meanId = `${uid}-mean-${i}`;
+          const sdId = `${uid}-sd-${i}`;
+          const fatValue = row.scenarios.expected.fatPercent;
+          const typed = manual[row.courseCode];
+          const stats = cohort.stats[row.courseCode];
+          const reading = stats ? readCohortStats(stats, row.pace) : null;
+          const readingAt = row.scenarios[scenario];
+
+          return (
+            <div className="uc-pred-course" key={row.courseCode}>
               <button
-                onClick={() => setShowConsent(false)}
-                className="flex-1 py-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-900 text-xs font-bold transition cursor-pointer"
+                type="button"
+                className="uc-course-row uc-pred-course-row"
+                aria-expanded={open}
+                aria-controls={panelId}
+                onClick={() => setOpenCode(open ? null : row.courseCode)}
               >
-                Maybe later
+                <span className="uc-course-row-id">
+                  <span className="uc-course-row-code uc-num">{row.courseCode}</span>
+                  <span className="uc-course-row-title">{row.courseTitle}</span>
+                  <span className="uc-course-row-tags">
+                    <i className="uc-course-kind">{row.structure}</i>
+                    <i className="uc-course-kind">{row.credits !== null ? `${row.credits} cr` : 'credits not synced'}</i>
+                    {!row.counted && <i className="uc-course-flag">Not counted</i>}
+                  </span>
+                </span>
+                <span className="uc-course-row-figs">
+                  {row.figures.filter((f) => f.value !== null).map((f) => (
+                    <span key={f.label}>
+                      <small>{f.label}</small>
+                      <b className="uc-num">{f.value}</b>
+                    </span>
+                  ))}
+                  <span className="uc-pred-verdict">
+                    <i className={`uc-pred-grade ${gradeTint(row.grade)}`}>{row.grade ?? '—'}</i>
+                    <small>{rangeLabel(row)}</small>
+                  </span>
+                </span>
+                <ChevronDown
+                  size={16}
+                  aria-hidden="true"
+                  className={`uc-course-row-caret${open ? ' is-open' : ''}`}
+                />
               </button>
-              <button
-                onClick={handleSubmit}
-                className="flex-1 py-2.5 rounded-xl acc-bg text-zinc-900 text-xs font-extrabold transition cursor-pointer"
-              >
-                I understand, submit my grade
-              </button>
+
+              {open && (
+                <div className="uc-pred-detail" id={panelId}>
+                  {row.fat.open ? (
+                    <div className="uc-pred-field">
+                      <label htmlFor={fatId}>
+                        What do you expect in the {row.fat.part === 'Lab' ? 'lab' : 'theory'} FAT?
+                      </label>
+                      <div className="uc-pred-slider">
+                        <input
+                          id={fatId}
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={fatValue}
+                          onChange={(e) => setFat(row.courseCode, Number(e.target.value))}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={fatValue}
+                          aria-label="FAT percentage"
+                          className="uc-pred-input uc-num"
+                          onChange={(e) => setFat(row.courseCode, Number(e.target.value))}
+                        />
+                        <span>% of the {row.fat.max}-mark paper</span>
+                      </div>
+                      <p className="uc-pred-sub">
+                        {row.pace === null
+                          ? 'Nothing is graded yet, so this starts at half the paper.'
+                          : `Your internal pace is ${Math.round(row.pace)}%.`}
+                        {' '}Conservative {row.scenarios.conservative.fatPercent}% · expected{' '}
+                        {row.scenarios.expected.fatPercent}% · optimistic {row.scenarios.optimistic.fatPercent}%.
+                      </p>
+                      {row.scenarios.conservative.fatPercent < 40 && (
+                        <p className="uc-pred-warn">
+                          Under 40% on the FAT paper is an F course, however strong the internals are.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="uc-pred-sub">
+                      {row.fat.weight > 0
+                        ? 'The FAT is already graded, so VTOP’s own mark decides this course.'
+                        : 'VTOP has not published a final-exam weight for this course, so there is no FAT to model.'}
+                    </p>
+                  )}
+
+                  <dl className="uc-pred-dl">
+                    <div>
+                      <dt>Projected total · {SCENARIO_LABEL[scenario].toLowerCase()}</dt>
+                      <dd className="uc-num">
+                        {projectedPercentLabel(readingAt.percent)}
+                        {readingAt.percent !== null ? ' / 100' : ''}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Projected grade</dt>
+                      <dd className="uc-num">{readingAt.grade ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Grade points</dt>
+                      <dd className="uc-num">{readingAt.points ?? '—'}</dd>
+                    </div>
+                  </dl>
+
+                  {row.pending.length > 0 && (
+                    <p className="uc-pred-sub">Still to be assessed: {row.pending.join(', ')}.</p>
+                  )}
+
+                  <p className="uc-pred-sub">{row.confidenceNote}</p>
+
+                  <div className="uc-pred-compare">
+                    <p className="uc-pred-label">
+                      <Users size={12} aria-hidden="true" /> Your class
+                    </p>
+                    {row.classStats?.source === 'manual' ? (
+                      <p className="uc-pred-sub">
+                        Using the mean you set ({row.classStats.mean}% ± {row.classStats.sd}) — your assumption,
+                        not classmates’ marks.
+                      </p>
+                    ) : reading?.level === 'ok' ? (
+                      <>
+                        <dl className="uc-pred-dl">
+                          <div><dt>Class mean</dt><dd className="uc-num">{reading.mean?.toFixed(1)}%</dd></div>
+                          <div><dt>Spread</dt><dd className="uc-num">{reading.sd === null ? '—' : reading.sd.toFixed(2)}</dd></div>
+                          <div>
+                            <dt>You vs class</dt>
+                            <dd className="uc-num">
+                              {(reading.difference ?? 0) >= 0 ? '+' : ''}{(reading.difference ?? 0).toFixed(1)} pts
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Typical range</dt>
+                            <dd className="uc-num">
+                              {reading.band ? `${reading.band[0].toFixed(1)}–${reading.band[1].toFixed(1)}%` : '—'}
+                            </dd>
+                          </div>
+                        </dl>
+                        <p className="uc-pred-sub">
+                          From {reading.count} shared internal marks in this course, term, faculty and slot — a
+                          sample, not your class strength.
+                        </p>
+                        {reading.warning && <p className="uc-pred-warn">{reading.warning}</p>}
+                      </>
+                    ) : (
+                      <p className="uc-pred-sub">
+                        {cohort.loading
+                          ? 'Checking how your class compares…'
+                          : stats === null
+                            ? 'Peer comparison is unavailable right now. Your own projection is unaffected.'
+                            : `Not enough same-class marks to compare${reading && reading.count > 0 ? ` (${reading.count} shared, ${MIN_COHORT_SIZE} needed)` : ''}, so VIT’s published bands decide the letter.`}
+                      </p>
+                    )}
+
+                    <div className="uc-pred-manual">
+                      <label htmlFor={meanId}>
+                        Class mean (your assumption)
+                        <input
+                          id={meanId}
+                          type="number"
+                          min={0}
+                          max={100}
+                          inputMode="numeric"
+                          value={typed?.mean ?? ''}
+                          placeholder="—"
+                          className="uc-pred-input uc-num"
+                          onChange={(e) => setManualValue(row.courseCode, 'mean', e.target.value)}
+                        />
+                      </label>
+                      <label htmlFor={sdId}>
+                        Spread
+                        <input
+                          id={sdId}
+                          type="number"
+                          min={0}
+                          max={50}
+                          inputMode="numeric"
+                          value={typed?.sd ?? ''}
+                          placeholder="—"
+                          className="uc-pred-input uc-num"
+                          onChange={(e) => setManualValue(row.courseCode, 'sd', e.target.value)}
+                        />
+                      </label>
+                      {typed && (
+                        <button
+                          type="button"
+                          className="uc-pred-reset"
+                          onClick={() => setManual((prev) => {
+                            const next = { ...prev };
+                            delete next[row.courseCode];
+                            return next;
+                          })}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <p className="uc-pred-sub">
+                      A mean you type is labelled an assumption and stays on this device. It is never shown as
+                      class data, and the confidence above drops to say so.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
+          );
+        })}
+      </div>
+
+      {impacts.length > 0 && (
+        <section className="uc-pred-impact">
+          <p className="uc-pred-label">Where a grade step moves your SGPA most</p>
+          <p className="uc-pred-sub">
+            Ranked by credits × the grade points one step is worth. This is not a reason to study less — every
+            open assessment still decides these letters.
+          </p>
+          <p className="uc-pred-sub">
+            If {impacts[0].courseCode} ends on {impacts[0].to} instead of {impacts[0].from}, your predicted SGPA
+            moves from {gpaLabel(impacts[0].fromSgpa)} to {gpaLabel(impacts[0].toSgpa)}.
+          </p>
+          <ul className="uc-pred-impact-list">
+            {impacts.map((imp) => (
+              <li key={imp.courseCode}>
+                <span className="uc-num">{imp.courseCode}</span>
+                <span className="uc-num">{imp.from} → {imp.to}</span>
+                <span className="uc-num">+{gpaLabel(imp.toSgpa - imp.fromSgpa)} SGPA</span>
+                <span className="uc-num">{imp.credits} cr</span>
+                {imp.remaining.length > 0 && <small>{imp.remaining.join(' · ')}</small>}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
+
+      <details className="uc-pred-adv">
+        <summary>How this is calculated</summary>
+        <div className="uc-pred-adv-body">
+          <p>
+            <b>Score.</b> Every course is projected on the weightage VTOP published, and a row it has not graded
+            sits at your current pace — never at zero. The FAT is VIT’s 40% of the course. An embedded course’s
+            theory and lab combine by the split its registration is under.
+          </p>
+          <p>
+            <b>Letter.</b> One rule per course: once at least {MIN_COHORT_SIZE} students in the same course, term,
+            faculty and slot have shared marks, the class mean and spread draw the bands; otherwise VIT’s
+            published absolute bands do. A course never shows both. Under either rule, a FAT paper below 40% is
+            an F — no internal mark lifts it.
+          </p>
+          <p>
+            <b>GPA.</b> Credits × grade points ({GRADE_ORDER.map((g) => `${g} ${GRADE_POINTS[g]}`).join(' · ')}),
+            divided by the credits counted. Pass/fail, audit, Minor, Honours and Second Major courses stay out.
+            A course with no grade yet is named and left out, never counted as an F.
+          </p>
+          <p>
+            <b>CGPA.</b> Exact when the grades VTOP has already awarded add up to its earned credits; otherwise
+            weighted from the CGPA and credits VTOP published, and marked ≈.
+          </p>
+          <p>
+            <b>What is official.</b> VTOP’s published CGPA and grades are official. Everything else here is a
+            prediction, and a student’s scenario is a what-if.
+          </p>
+          {share && (
+            <div className="uc-predict-share">
+              <div className="uc-predict-share-head">
+                <span id={shareLabelId}>Share my marks with UltraCC</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={share.on}
+                  aria-labelledby={shareLabelId}
+                  disabled={share.status === 'saving'}
+                  onClick={() => share.toggle(!share.on)}
+                  className={`uc-predict-switch${share.on ? ' is-on' : ''}`}
+                >
+                  <i aria-hidden="true" />
+                  {share.on ? 'On' : 'Off'}
+                </button>
+              </div>
+              <p className="uc-predict-copy">
+                <Info size={12} aria-hidden="true" />
+                Your class totals feed an anonymous average for this course, faculty and slot. Other students
+                see that average, never your marks. Turning sharing off withdraws your contribution — it never
+                changes your own prediction.
+              </p>
+              {share.status === 'error' && (
+                <p className="uc-predict-warn">
+                  {share.on
+                    ? 'UltraCC could not reach the sharing service, so your marks are not being added right now.'
+                    : 'UltraCC could not confirm the withdrawal. Your earlier contribution may still be stored — try again.'}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   );
 };

@@ -10,6 +10,11 @@
  *   - When a new service worker is waiting, `updateReady` flips true and the
  *     UI can offer "Update now" (skipWaiting + reload). Never auto-reloads —
  *     the student could be mid-task.
+ *
+ * The second half of that contract is discovery: a worker that must be told to
+ * activate is worthless if nothing ever tells the browser to look for a new one.
+ * So the hook asks for an update (`registration.update()`) once the registration
+ * resolves and again whenever the app comes back to the foreground.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -72,6 +77,29 @@ export function usePwa(): PwaState {
     };
     navigator.serviceWorker?.addEventListener('message', onMessage);
 
+    // Ask for the update rather than waiting to be told. A registered worker only
+    // re-fetches `/sw.js` when the browser feels like it — on iOS that can mean
+    // many openings of the app, so a fix that has been deployed for hours is still
+    // invisible on the phone. `update()` bypasses the HTTP cache and fires
+    // `updatefound` if the bytes changed; nothing activates without the student's
+    // SKIP_WAITING, so this discovers, it never swaps mid-task.
+    const recheck = () => {
+      // Older WebKit has no `update()` on a registration; the promise it returns
+      // is optional too, so neither may be dereferenced.
+      let pending: Promise<ServiceWorkerRegistration | void> | undefined;
+      try {
+        pending = registration?.update?.();
+      } catch {
+        pending = undefined;
+      }
+      if (pending && typeof pending.then === 'function') pending.then(checkWaiting).catch(() => { /* offline */ });
+      else checkWaiting();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') recheck();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     navigator.serviceWorker
       ?.getRegistration()
       .then((reg) => {
@@ -86,12 +114,14 @@ export function usePwa(): PwaState {
           });
         });
         checkWaiting();
+        recheck();
       })
       .catch(() => { /* SW unsupported — update flow just never appears */ });
 
     return () => {
       window.removeEventListener('beforeinstallprompt', onInstallPrompt);
       window.removeEventListener('appinstalled', onInstalled);
+      document.removeEventListener('visibilitychange', onVisible);
       navigator.serviceWorker?.removeEventListener('message', onMessage);
     };
   }, []);

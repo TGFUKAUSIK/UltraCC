@@ -23,7 +23,6 @@ const row = (overrides: Partial<AttendanceRecord> = {}): AttendanceRecord => ({
   attended: 18,
   totalHeld: 20,
   percentage: 90,
-  category: 'Safe',
   lastUpdated: '2026-09-01',
   venue: 'SJT 204',
   ...overrides,
@@ -106,7 +105,12 @@ describe('groupCourseAttendance — one course, both halves kept apart', () => {
     // (18 + 8) / (20 + 10) — a 2× lab weight would have given 84.7 instead.
     expect(group.attended).toBe(26);
     expect(group.conducted).toBe(30);
-    expect(group.percentage).toBe(86.7);
+    // 26/30 is 86.666…, and it is truncated to 86.6 rather than rounded to 86.7.
+    // The label that prints this number truncates for the same reason: rounding
+    // could lift a figure onto a line it has not actually reached, and a course
+    // whose lab row quoted 66.66 beside a combined 66.7 would show one class at
+    // two precisions on the same card.
+    expect(group.percentage).toBe(86.6);
   });
 
   it('keeps two lab rows of one course as one component with both rows intact', () => {

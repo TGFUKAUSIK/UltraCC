@@ -124,8 +124,34 @@ export function clampPercentage(value: number): number {
 }
 
 /**
+ * Whether (year, month, day) names a day that exists: month 1-12, and a day
+ * inside that month's own length, leap years included.
+ *
+ * MIRROR OF the same check in supabase/functions/vtop-gateway/parsers.ts — the
+ * gateway deploys as a standalone Deno asset and cannot import from src/, so the
+ * rule is copied and `src/utils/__tests__/realDatesLiveOnce.test.ts` fails if
+ * the two drift.
+ */
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+  if (year < 1000 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
+
+/**
  * VTOP dates arrive in many formats ("18-AUG-2026", "18/08/2026", "2026-08-18").
- * Normalize to ISO YYYY-MM-DD when possible; otherwise return the raw string.
+ * Normalize to ISO YYYY-MM-DD when the pieces name a real day; otherwise hand
+ * back VTOP's own text unchanged.
+ *
+ * The "otherwise" is the whole point of the check. This used to reshape whatever
+ * digits it found into an ISO without asking whether that day existed, so
+ * "08/18/2026" came back as "2026-18-08" — month eighteen. `examStartMs` then fed
+ * it to Date, which rolled the impossible day over into a real instant eight
+ * months later, and an exam VTOP never dated could be counted down to, notified
+ * for, and written into a student's calendar on a day nobody named. Text that is
+ * not a date keeps the honest state the rest of the app already speaks: the
+ * screen says "Not released yet" instead of inventing a Tuesday.
  */
 export function normalizeDate(raw: string): string {
   const value = raw.trim();
@@ -143,18 +169,23 @@ export function normalizeDate(raw: string): string {
   if (mmm) {
     const [, dd, mon, yyyyRaw] = mmm;
     const month = monthMap[mon.slice(0, 3).toLowerCase()];
-    if (month) {
-      let yyyy = yyyyRaw.length === 2 ? `20${yyyyRaw}` : yyyyRaw;
-      const day = dd.padStart(2, '0');
-      return `${yyyy}-${month}-${day}`;
+    const yyyy = yyyyRaw.length === 2 ? `20${yyyyRaw}` : yyyyRaw;
+    if (month && isRealCalendarDate(Number(yyyy), Number(month), Number(dd))) {
+      return `${yyyy}-${month}-${dd.padStart(2, '0')}`;
     }
+    // A real month name with a day that month never had ("31-FEB-2026") is VTOP's
+    // own words to report, not a date to repair.
+    return value;
   }
 
   // dd/mm/yyyy
   const dmy = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
   if (dmy) {
     const [, dd, mm, yyyy] = dmy;
-    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    if (isRealCalendarDate(Number(yyyy), Number(mm), Number(dd))) {
+      return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    }
+    return value;
   }
 
   return value;

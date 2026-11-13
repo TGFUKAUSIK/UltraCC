@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   generateNotificationCandidates, deliverNotifications, loadNotificationPrefs, saveNotificationPrefs,
-  markAllSeen, recordMarksSeen, clearNotificationLedger, parseVtopDate,
+  markAllSeen, recordMarksSeen, clearNotificationLedger,
   DEFAULT_NOTIFICATION_PREFS, NotificationCandidate, SmartNotificationInput,
 } from '../smartNotifications';
 import type { AssignmentTask, AttendanceRecord, ExamSchedule } from '../../types';
+import { VTOP_ATTENDANCE_FLOOR } from '../../utils/attendanceBands';
 
 // Fixed "now": 2026-09-14 09:00 IST-ish (use a UTC anchor for determinism)
 const NOW = new Date('2026-09-14T09:00:00').getTime();
@@ -18,7 +19,7 @@ const assignment = (over: Partial<AssignmentTask> = {}): AssignmentTask => ({
 
 const attendance = (over: Partial<AttendanceRecord> = {}): AttendanceRecord => ({
   courseCode: 'CSE101', courseTitle: 'Problem Solving', type: 'ETH', slot: 'A1',
-  facultyName: 'Dr. A', attended: 20, totalHeld: 30, percentage: 66, category: 'Critical',
+  facultyName: 'Dr. A', attended: 20, totalHeld: 30, percentage: 66,
   lastUpdated: '', venue: '',
   ...over,
 });
@@ -39,18 +40,6 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-describe('parseVtopDate', () => {
-  it('parses VTOP DD-MM-YYYY and ISO dates', () => {
-    expect(parseVtopDate('16-09-2026')).toBe(new Date(2026, 8, 16).getTime());
-    expect(parseVtopDate('2026-09-16')).toBe(new Date(2026, 8, 16).getTime());
-  });
-
-  it('returns null for garbage', () => {
-    expect(parseVtopDate('')).toBeNull();
-    expect(parseVtopDate('TBD')).toBeNull();
-  });
-});
-
 describe('generateNotificationCandidates', () => {
   it('flags pending assignments due within 48h, sorted urgency by proximity', () => {
     const out = generateNotificationCandidates({
@@ -67,10 +56,14 @@ describe('generateNotificationCandidates', () => {
     expect(out.find((c) => c.id.includes('later'))!.urgency).toBe('warning');
   });
 
-  it('flags attendance below 75% only', () => {
+  it('flags attendance below VTOP’s floor only', () => {
     const out = generateNotificationCandidates({
       ...baseInput(),
-      attendance: [attendance({ courseCode: 'RISK', percentage: 66 }), attendance({ courseCode: 'SAFE', percentage: 92, category: 'Safe' })],
+      attendance: [
+        attendance({ courseCode: 'RISK', percentage: VTOP_ATTENDANCE_FLOOR - 9 }),
+        attendance({ courseCode: 'EDGE', percentage: VTOP_ATTENDANCE_FLOOR }),
+        attendance({ courseCode: 'SAFE', percentage: 92 }),
+      ],
     });
     expect(out.length).toBe(1);
     expect(out[0].title).toContain('RISK');
@@ -86,6 +79,30 @@ describe('generateNotificationCandidates', () => {
     expect(out[0].title).not.toContain('Theory');
     expect(out[0].body).toContain('3/6');
     expect(out[0].urgency).toBe('critical'); // 50% is well under the line
+  });
+
+  it('scales the shout with the same line it warns about', () => {
+    const out = generateNotificationCandidates({
+      ...baseInput(),
+      attendance: [
+        attendance({ courseCode: 'SHARP', percentage: 62 }), // well under the floor
+        attendance({ courseCode: 'SLIP', percentage: 73 }),  // just under it
+      ],
+    });
+    expect(out).toHaveLength(2);
+    expect(out.find((c) => c.title.includes('SHARP'))!.urgency).toBe('critical');
+    expect(out.find((c) => c.title.includes('SLIP'))!.urgency).toBe('warning');
+  });
+
+  it('names VTOP’s line in the body, from the number that filtered it', () => {
+    const out = generateNotificationCandidates({
+      ...baseInput(),
+      attendance: [attendance({ courseCode: 'CSE101', percentage: 72 })],
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].body).toContain(`under VTOP’s ${VTOP_ATTENDANCE_FLOOR}% line`);
+    // A hand-typed "75% requirement" could say something the filter disagreed with.
+    expect(out[0].body).not.toMatch(/requirement/i);
   });
 
   it('gives theory and lab rows of the SAME course code distinct ids', () => {
@@ -204,7 +221,27 @@ describe('generateNotificationCandidates', () => {
     });
     const reminders = out.filter((c) => c.id.startsWith('class:'));
     expect(reminders).toHaveLength(1);
-    expect(reminders[0].body).toContain('15:40');
+    // Students read a class time the way a timetable writes it, so the reminder
+    // quotes "3:40 PM" — the same label the timetable and dashboard use.
+    expect(reminders[0].body).toContain('runs until 3:40 PM');
+    expect(reminders[0].body).not.toContain('15:40');
+  });
+
+  it('names the first class that has a time, not the first row of the day', () => {
+    // VTOP leaves a cell without times now and then. Sorted as text, '' sorts
+    // before every clock time, so the heads-up announced a class nobody could
+    // find a hour for and stayed silent about the 08:00 one.
+    const out = generateNotificationCandidates({
+      ...baseInput(),
+      timetable: [
+        { day: 'Monday', startTime: '', courseCode: 'UNTIMED' },
+        { day: 'Monday', startTime: '08:00', courseCode: 'FIRST' },
+      ],
+    });
+    const tt = out.filter((c) => c.category === 'timetable');
+    expect(tt.some((c) => c.title.includes('UNTIMED'))).toBe(false);
+    expect(tt.some((c) => c.title.includes('FIRST'))).toBe(true);
+    expect(tt.find((c) => c.title.includes('FIRST'))?.body).toContain('Starts at 8:00 AM');
   });
 
   it('never fires duplicate ids for the same subject on the same day', () => {

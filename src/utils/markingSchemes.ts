@@ -24,6 +24,7 @@
 
 import type { CourseMarks } from '../types';
 import { isEvaluatedAssessment } from './assessmentStatus';
+import { weightedMarksFor } from './gradeModel';
 
 export type CourseKind = 'theory' | 'lab' | 'embedded' | 'project' | 'softskill' | 'audit' | 'unknown';
 
@@ -236,17 +237,35 @@ export function courseKindFromRows(
 // Scheme resolution from observed VTOP marks
 // ---------------------------------------------------------------------------
 
+/** One assessment row as this module sees it, including VTOP's own weighted mark. */
+interface MarkRowLike {
+  scored: number;
+  max: number;
+  weightage: number;
+  status?: string;
+  weightageMark?: number;
+}
+
+/** VTOP serves a final exam row before any mark exists on it, so `scored` is optional. */
+interface FatRowLike {
+  scored?: number;
+  max: number;
+  weightage: number;
+  status?: string;
+  weightageMark?: number;
+}
+
 interface MarksLike {
   courseCode: string;
   courseTitle: string;
-  cat1?: { scored: number; max: number; weightage: number; status?: string };
-  cat2?: { scored: number; max: number; weightage: number; status?: string };
-  da1?: { scored: number; max: number; weightage: number; status?: string };
-  da2?: { scored: number; max: number; weightage: number; status?: string };
-  da3?: { scored: number; max: number; weightage: number; status?: string };
-  quiz?: { scored: number; max: number; weightage: number; status?: string };
-  fat?: { scored?: number; max: number; weightage: number; status?: string };
-  extraComponents?: { title: string; scored: number; max: number; weightage: number; status: string }[];
+  cat1?: MarkRowLike;
+  cat2?: MarkRowLike;
+  da1?: MarkRowLike;
+  da2?: MarkRowLike;
+  da3?: MarkRowLike;
+  quiz?: MarkRowLike;
+  fat?: FatRowLike;
+  extraComponents?: (MarkRowLike & { title: string; status: string })[];
 }
 
 const COMPONENT_ORDER = ['cat1', 'cat2', 'da1', 'da2', 'da3', 'quiz', 'fat'] as const;
@@ -328,10 +347,10 @@ export function resolveMarkingSchemeFromCourse(
 }
 
 interface EvaluatedBreakdown {
-  /** Weighted marks earned so far (sum of scored/max × weight over graded rows). */
+  /** Weighted marks earned on every row VTOP has graded. */
   earned: number;
-  /** Weight of the non-FAT rows VTOP has actually graded (the pace denominator). */
-  internalWeight: number;
+  /** The total weight of those same rows — the exact denominator for `earned`. */
+  evaluatedWeight: number;
   hasEvaluated: boolean;
 }
 
@@ -339,12 +358,14 @@ interface EvaluatedBreakdown {
  * Walks the resolved scheme and VTOP's observed rows in a single pass,
  * returning both the weighted marks earned and the weight that was actually
  * in play. Sharing one pass keeps the numerator (curriculumAwareTotal) and the
- * denominator (evaluatedInternalWeight) in lock-step: a component counted in
- * one is always counted in the other.
+ * denominator (evaluatedWeight) in lock-step: a component counted in
+ * one is always counted in the other — including the FAT, whose marks used to
+ * join the numerator while its weight stayed out of the denominator, so a
+ * course read as 68/45 = "151% pace" and the health card pinned it at 100.
  */
 function evaluateComponents(marks: MarksLike): EvaluatedBreakdown {
   const scheme = resolveMarkingScheme(marks);
-  const byKey: Record<string, { scored: number; max: number; weightage: number; status?: string }> = {
+  const byKey: Record<string, MarkRowLike> = {
     cat1: marks.cat1 ?? { scored: 0, max: 0, weightage: 0 },
     cat2: marks.cat2 ?? { scored: 0, max: 0, weightage: 0 },
     da1: marks.da1 ?? { scored: 0, max: 0, weightage: 0 },
@@ -354,10 +375,10 @@ function evaluateComponents(marks: MarksLike): EvaluatedBreakdown {
     fat: { scored: marks.fat?.scored ?? 0, max: marks.fat?.max ?? 0, weightage: marks.fat?.weightage ?? 0, status: marks.fat?.status },
   };
   let earned = 0;
-  let internalWeight = 0;
+  let evaluatedWeight = 0;
   let hasEvaluated = false;
 
-  if (scheme.isFallback) return { earned, internalWeight, hasEvaluated };
+  if (scheme.isFallback) return { earned, evaluatedWeight, hasEvaluated };
 
   if (scheme.kind === 'theory' || scheme.kind === 'embedded') {
     for (const c of scheme.components) {
@@ -368,8 +389,8 @@ function evaluateComponents(marks: MarksLike): EvaluatedBreakdown {
       if (isEvaluatedAssessment(comp)) {
         hasEvaluated = true;
         const weight = comp.weightage > 0 ? comp.weightage : c.weightage;
-        earned += (comp.scored / comp.max) * weight;
-        if (c.key !== 'fat') internalWeight += weight;
+        earned += weightedMarksFor({ scored: comp.scored, max: comp.max, weightage: weight, weightageMark: comp.weightageMark });
+        evaluatedWeight += weight;
       }
     }
     // Unmapped extras (PATs, Attendance Assessments...) are part of the real
@@ -378,26 +399,35 @@ function evaluateComponents(marks: MarksLike): EvaluatedBreakdown {
       if (isEvaluatedAssessment(e)) {
         hasEvaluated = true;
         const weight = e.weightage > 0 ? e.weightage : 0;
-        earned += weight > 0 ? (e.scored / e.max) * e.weightage : 0;
-        internalWeight += weight;
+        earned += weightedMarksFor({ scored: e.scored, max: e.max, weightage: weight, weightageMark: e.weightageMark });
+        evaluatedWeight += weight;
       }
     }
-    return { earned, internalWeight, hasEvaluated };
+    return { earned, evaluatedWeight, hasEvaluated };
   }
 
   // Lab / project / softskill: experiments/reviews come from extraComponents.
   for (const e of marks.extraComponents ?? []) {
     if (isEvaluatedAssessment(e) && e.weightage > 0) {
       hasEvaluated = true;
-      earned += (e.scored / e.max) * e.weightage;
-      internalWeight += e.weightage;
+      earned += weightedMarksFor(e);
+      evaluatedWeight += e.weightage;
     }
   }
   if (marks.fat && isEvaluatedAssessment(marks.fat)) {
     hasEvaluated = true;
-    earned += (marks.fat.scored ?? 0) / marks.fat.max * (marks.fat.weightage || LAB_FAT_WEIGHT);
+    // One weight for both sides of the fraction: whatever the marks were
+    // earned at is the weight the pace is measured over.
+    const fatWeight = marks.fat.weightage || LAB_FAT_WEIGHT;
+    earned += weightedMarksFor({
+      scored: marks.fat.scored ?? 0,
+      max: marks.fat.max,
+      weightage: fatWeight,
+      weightageMark: marks.fat.weightageMark,
+    });
+    evaluatedWeight += fatWeight;
   }
-  return { earned, internalWeight, hasEvaluated };
+  return { earned, evaluatedWeight, hasEvaluated };
 }
 
 /**
@@ -412,15 +442,15 @@ export function curriculumAwareTotal(marks: MarksLike): number | null {
 }
 
 /**
- * Weight of the non-FAT rows VTOP has actually graded for a course — the
+ * The total weight of the rows VTOP has actually graded for a course — the
  * denominator that pairs with curriculumAwareTotal's numerator. Dividing the
  * two yields the student's pace over the marks actually in play, rather than
  * over a fixed scheme template that assumes components (like a third DA) the
- * course may not run. Returns null when nothing internal is graded.
+ * course may not run. Returns null when nothing has been graded.
  */
-export function evaluatedInternalWeight(marks: MarksLike): number | null {
-  const { internalWeight } = evaluateComponents(marks);
-  return internalWeight > 0 ? internalWeight : null;
+export function evaluatedWeight(marks: MarksLike): number | null {
+  const { evaluatedWeight } = evaluateComponents(marks);
+  return evaluatedWeight > 0 ? evaluatedWeight : null;
 }
 
 /** Display label for a course's marking scheme (falls back honestly). */

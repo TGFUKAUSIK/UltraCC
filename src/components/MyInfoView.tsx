@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
-import { UserRound, CreditCard, KeyRound, Mail, Phone, GraduationCap, ShieldCheck, Eye, EyeOff, ExternalLink, BadgeCheck, Landmark, Fingerprint, MessagesSquare, History, CalendarClock, Megaphone, Users, Wallet, Sparkles } from 'lucide-react';
+import { UserRound, CreditCard, KeyRound, Mail, Phone, GraduationCap, ShieldCheck, Eye, EyeOff, ExternalLink, BadgeCheck, Landmark, Fingerprint, MessagesSquare, History, CalendarClock, Megaphone, Users, Wallet, Award, Download } from 'lucide-react';
 import { PaymentsInfo, CredentialsInfo, CredentialRow, PaymentReceiptsInfo, SapInfo, BankInfo, BiometricInfo, ProctorMessage, LoginHistoryRow, ClassMessage, HodDeanInfo, WalletInfo, ExtraCurricularInfo } from '../lib/vtop/types';
-import { Download } from 'lucide-react';
 import { StudentProfile } from '../types';
 import { useCgpaPrivacy } from '../lib/cgpaPrivacy';
+import { publishedGpaLabel } from '../utils/gradeModel';
+import { isReal } from '../utils/placeholders';
+import { receiptHtml } from '../utils/receiptHtml';
+import { schoolLabel } from '../utils/vitSchools';
 import { ProfilePhoto } from './ProfilePhoto';
+
+/** A VTOP field as text, or '' when VTOP only left a stub ("-", "R -", "None"). */
+const shown = (value: unknown) => (isReal(value) ? String(value).trim() : '');
 
 interface MyInfoViewProps {
   student?: StudentProfile | null;
@@ -35,28 +41,32 @@ export const MyInfoView: React.FC<MyInfoViewProps> = ({ student, payments, crede
   ];
 
   return (
-    <div className="my-info-view space-y-6">
-      <div>
-        <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">My Info</h2>
-        <p className="text-sm text-zinc-500 font-medium mt-1">
-          Your profile, fee payments and VTOP-managed accounts — synced from VTOP
-        </p>
-      </div>
+    <div className="my-info-view uc-index pb-12">
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">Student record · VIT Chennai</span>
+            <h2 className="uc-dir-name">My Info</h2>
+            <p className="uc-note">Your profile, fee payments and the accounts VTOP manages — synced from VTOP.</p>
+          </div>
+        </div>
+      </section>
 
       {/* Section tabs */}
-      <div className="flex space-x-1 bg-white border border-zinc-200 rounded-2xl p-1 w-fit">
+      <div className="uc-tabs" role="tablist" aria-label="My Info sections">
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = section === t.id;
           return (
             <button
               key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
               onClick={() => setSection(t.id)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                active ? 'acc-bg text-zinc-900 acc-glow' : 'text-zinc-500 hover:text-zinc-900'
-              }`}
+              className={active ? 'is-on' : undefined}
             >
-              <Icon className="h-4 w-4" />
+              <Icon aria-hidden="true" />
               <span>{t.label}</span>
             </button>
           );
@@ -91,83 +101,72 @@ function ProfileSection({ student, sapInfo }: { student?: StudentProfile | null;
   // "Branch / Group Studied" on the profile page is the Class-XII group ("PCM",
   // "Computer with Maths"), so it gets its own row and can never be shown as
   // the branch. Branch is blank (rendered as "—") until VTOP states one.
+  const schoolName = schoolLabel(student.school);
   const rows: { label: string; value: string }[] = [
-    { label: 'Name', value: student.name },
-    { label: 'Registration No.', value: student.regNo },
-    { label: 'Programme', value: student.program },
-    { label: 'Branch', value: student.branch },
-    { label: 'School', value: student.school },
-    { label: 'Class XII group', value: student.groupStudied },
+    { label: 'Name', value: shown(student.name) },
+    { label: 'Registration No.', value: shown(student.regNo) },
+    { label: 'Programme', value: shown(student.program) },
+    { label: 'Branch', value: shown(student.branch) },
+    { label: 'School', value: shown(schoolName) },
+    { label: 'Class XII group', value: shown(student.groupStudied) },
     { label: 'Semester', value: student.semester > 0 ? String(student.semester) : 'Not available from VTOP' },
-    { label: 'CGPA', value: cgpaHidden ? '••••' : student.cgpa !== null && student.cgpa > 0 ? student.cgpa.toFixed(2) : 'Not available from VTOP' },
+    { label: 'CGPA', value: cgpaHidden ? '••••' : publishedGpaLabel(student.cgpa, 'Not available from VTOP') },
     { label: 'Credits Earned', value: student.totalCreditsCompleted !== null ? String(student.totalCreditsCompleted) : 'Not available from VTOP' },
     { label: 'Credits Registered', value: student.totalCreditsRequired !== null ? String(student.totalCreditsRequired) : 'Not available from VTOP' },
   ];
   return (
-    <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
+    <section className="uc-plate">
+      <div className="uc-plate-head">
+        <span className="uc-cap"><GraduationCap className="uc-dir-inline" aria-hidden="true" />Student profile</span>
+        <span className="uc-dir-count">From your VTOP profile</span>
+      </div>
+
       <div className="profile-mobile-identity">
         <ProfilePhoto name={student.name} src={student.profilePhotoUrl} size="md" className="profile-mobile-avatar" />
         <div>
           <strong>{student.name}</strong>
-          <span>{student.regNo}{(student.branch || student.school) ? ` · ${student.branch || student.school}` : ''}</span>
+          <span>{student.regNo}{(shown(student.branch) || schoolName) ? ` · ${shown(student.branch) || schoolName}` : ''}</span>
           <small>VIT Chennai</small>
         </div>
       </div>
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-600">
-          <GraduationCap className="h-6 w-6" />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-zinc-900 tracking-tight">Student Profile</h3>
-          <p className="text-xs text-zinc-500 font-medium">From your VTOP profile</p>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      <dl className="uc-facts uc-info-facts">
         {rows.map((r) => (
-          <div key={r.label} className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
-            <p className="text-[10px] uppercase tracking-wide text-zinc-500 font-bold">{r.label}</p>
-            <p className="text-sm font-semibold text-zinc-900 mt-1 break-words">{r.value || '—'}</p>
+          <div key={r.label}>
+            <dt>{r.label}</dt>
+            <dd>{r.value || '—'}</dd>
           </div>
         ))}
         {sapInfo && sapInfo.rows.length > 0 && (
-          <div className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
-            <p className="text-[10px] uppercase tracking-wide text-zinc-500 font-bold">SAP ID</p>
-            <p className="text-sm font-semibold text-zinc-900 mt-1 break-words">
-              {sapInfo.rows.find((r) => /sap/i.test(r.label))?.value || sapInfo.rows.map((r) => r.value).filter(Boolean).join(' · ')}
-            </p>
+          <div>
+            <dt>SAP ID</dt>
+            <dd>{shown(sapInfo.rows.find((r) => /sap/i.test(r.label))?.value) || sapInfo.rows.map((r) => r.value).filter(isReal).join(' · ') || '—'}</dd>
           </div>
         )}
-        {(student.hostelBlock || student.roomNo) && (
-          <div className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
-            <p className="text-[10px] uppercase tracking-wide text-zinc-500 font-bold">Hostel</p>
-            <p className="text-sm font-semibold text-zinc-900 mt-1">
-              {[student.hostelBlock, student.roomNo].filter(Boolean).join(' · ') || '—'}
-            </p>
+        {(isReal(student.hostelBlock) || isReal(student.roomNo)) && (
+          <div>
+            <dt>Hostel</dt>
+            <dd>{[student.hostelBlock, student.roomNo].filter(isReal).join(' · ')}</dd>
           </div>
         )}
-      </div>
+      </dl>
 
-      {/* Proctor */}
-      <div className="mt-6 bg-zinc-50 border border-zinc-200 rounded-2xl p-5">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-violet-500/10 border border-violet-500/20 rounded-xl text-violet-600">
-            <BadgeCheck className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-zinc-900">
-              {student.proctorAvailable && student.proctorName ? student.proctorName : 'Proctor not provided by VTOP'}
-            </p>
-            <p className="text-[11px] text-zinc-500">Academic Proctor</p>
-            {student.proctorContact && (
-              <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-1.5 break-all">
-                {student.proctorContact.includes('@') ? <Mail className="h-3.5 w-3.5 shrink-0" /> : <Phone className="h-3.5 w-3.5 shrink-0" />}
+      <div className="uc-info-block">
+        <div className="uc-info-head">
+          <BadgeCheck aria-hidden="true" />
+          <div>
+            <b>{student.proctorAvailable && isReal(student.proctorName) ? shown(student.proctorName) : 'Proctor not provided by VTOP'}</b>
+            <small>Academic proctor</small>
+            {isReal(student.proctorContact) && (
+              <small className="uc-info-contact">
+                {student.proctorContact.includes('@') ? <Mail aria-hidden="true" /> : <Phone aria-hidden="true" />}
                 {student.proctorContact}
-              </p>
+              </small>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -176,90 +175,81 @@ function PaymentsSection({ payments, paymentReceipts }: { payments?: PaymentsInf
     return <EmptyState text="Payments not synced yet — log in and sync to see your fee dues." />;
   }
   return (
-    <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600">
-          <CreditCard className="h-6 w-6" />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-zinc-900 tracking-tight">{payments.title || 'Fee Payments'}</h3>
-          <p className="text-xs text-zinc-500 font-medium">From VTOP p2p/Payments</p>
-        </div>
+    <section className="uc-plate">
+      <div className="uc-plate-head">
+        <span className="uc-cap"><CreditCard className="uc-dir-inline" aria-hidden="true" />{payments.title || 'Fee payments'}</span>
+        <span className="uc-dir-count">From VTOP p2p/Payments</span>
       </div>
 
       {payments.message && (
-        <div className="flex items-start gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl mb-5">
-          <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-emerald-700">{payments.message}</p>
+        <div className="uc-info-msg is-good">
+          <ShieldCheck aria-hidden="true" />
+          <div><p className="uc-info-prose">{payments.message}</p></div>
         </div>
       )}
 
       {payments.rows.length === 0 && !payments.message && (
-        <p className="text-sm text-zinc-500">
-          No payment/dues information returned by VTOP for your account.
-        </p>
+        <p className="uc-info-blank uc-info-pad">No payment or dues information returned by VTOP for your account.</p>
       )}
 
       {payments.rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <tbody>
-              {payments.rows.map((r, i) => (
-                <tr key={i} className="border-t border-zinc-200 first:border-t-0">
-                  <td className="py-2.5 pr-4 text-zinc-500 font-medium whitespace-nowrap">{r.label}</td>
-                  <td className="py-2.5 font-semibold text-zinc-900 text-right">{r.value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <dl className="uc-facts uc-info-facts">
+          {payments.rows.map((r, i) => (
+            <div key={i}>
+              <dt>{r.label}</dt>
+              <dd>{shown(r.value) || '—'}</dd>
+            </div>
+          ))}
+        </dl>
       )}
 
-      <p className="text-[10px] text-zinc-600 mt-5">
+      <p className="uc-info-note">
         Amounts shown are exactly what VTOP reports. Payment itself happens on VTOP's payment portal.
       </p>
 
       {/* Payment receipts */}
-      <div className="mt-8 border-t border-zinc-200 pt-6">
-        <h4 className="text-sm font-bold text-zinc-900 mb-3">Payment Receipts</h4>
+      <div className="uc-info-block">
+        <p className="uc-dir-subhead">Payment receipts</p>
         {!paymentReceipts ? (
-          <p className="text-[11px] text-zinc-500">Not synced yet — re-sync to fetch your fee receipts.</p>
+          <p className="uc-info-blank">Not synced yet — re-sync to fetch your fee receipts.</p>
         ) : paymentReceipts.receipts.length === 0 ? (
-          <p className="text-[11px] text-zinc-500">No receipts returned by VTOP for your account.</p>
+          <p className="uc-info-blank">No receipts returned by VTOP for your account.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
+          <div className="uc-info-tbl">
+            <table className="uc-tbl">
               <thead>
-                <tr className="text-left text-[10px] uppercase tracking-widest text-zinc-500">
-                  <th scope="col" className="py-2 pr-3 font-extrabold">Receipt No.</th>
-                  <th scope="col" className="py-2 pr-3 font-extrabold">Date</th>
-                  <th scope="col" className="py-2 pr-3 font-extrabold">Amount</th>
-                  <th scope="col" className="py-2 font-extrabold">Campus</th>
-                  <th scope="col" className="py-2 font-extrabold"></th>
+                <tr>
+                  <th scope="col">Receipt No.</th>
+                  <th scope="col">Date</th>
+                  <th scope="col">Amount</th>
+                  <th scope="col">Campus</th>
+                  <th scope="col"><span className="sr-only">Receipt</span></th>
                 </tr>
               </thead>
               <tbody>
                 {paymentReceipts.receipts.map((r, i) => (
-                  <tr key={`${r.receiptNumber}-${i}`} className="border-t border-zinc-200">
-                    <td className="py-2 pr-3 font-mono text-zinc-900">{r.receiptNumber}</td>
-                    <td className="py-2 pr-3 text-zinc-900">{r.date}</td>
-                    <td className="py-2 pr-3 font-mono text-emerald-600">{r.amount}</td>
-                    <td className="py-2 text-zinc-500">{r.campusCode}</td>
-                    <td className="py-2">
+                  <tr key={`${r.receiptNumber}-${i}`}>
+                    <td className="uc-num">{shown(r.receiptNumber) || '—'}</td>
+                    <td className="uc-num">{shown(r.date) || '—'}</td>
+                    <td className="uc-num is-good">{shown(r.amount) || '—'}</td>
+                    <td>{shown(r.campusCode) || '—'}</td>
+                    <td>
                       <button
+                        type="button"
                         onClick={() => {
                           // Generate a printable receipt
                           const win = window.open('', '_blank');
                           if (win) {
-                            win.document.write(`<!DOCTYPE html><html><head><title>Receipt ${r.receiptNumber}</title><style>body{font-family:system-ui;padding:40px;background:#000;color:#fff}table{width:100%;border-collapse:collapse}td,th{padding:8px 12px;border-bottom:1px solid #333;text-align:left}th{color:#888;font-size:11px;text-transform:uppercase}.amount{color:#34d399;font-size:20px;font-weight:bold}.header{text-align:center;margin-bottom:30px}.header h1{font-size:24px;margin:0}.header p{color:#888;font-size:12px}@media print{body{background:#fff;color:#000}}</style></head><body><div class='header'><h1>UltraCC — Payment Receipt</h1><p>VIT Chennai Fee Payment Receipt</p></div><table><tr><th>Receipt Number</th><td>${r.receiptNumber}</td></tr><tr><th>Date</th><td>${r.date}</td></tr><tr><th>Amount</th><td class='amount'>${r.amount}</td></tr><tr><th>Campus</th><td>${r.campusCode}</td></tr><tr><th>Registration No</th><td>${r.regno}</td></tr><tr><th>Application No</th><td>${r.applno}</td></tr></table><p style='margin-top:30px;text-align:center;color:#666;font-size:10px'>Generated by UltraCC • ${new Date().toLocaleDateString('en-IN')}</p></body></html>`);
+                            win.document.write(receiptHtml(r));
                             win.document.close();
                             win.print();
                           }
                         }}
-                        className="p-1.5 text-zinc-500 hover:text-emerald-600 bg-white border border-zinc-200 rounded-lg transition cursor-pointer"
+                        className="uc-dir-ico"
                         title="Download receipt"
+                        aria-label={`Download receipt ${r.receiptNumber}`}
                       >
-                        <Download className="h-3.5 w-3.5" />
+                        <Download aria-hidden="true" />
                       </button>
                     </td>
                   </tr>
@@ -269,7 +259,7 @@ function PaymentsSection({ payments, paymentReceipts }: { payments?: PaymentsInf
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -283,39 +273,37 @@ function CredentialsSection({ credentials }: { credentials?: CredentialsInfo | n
     return <EmptyState text="VTOP returned no managed accounts for you." />;
   }
   return (
-    <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-600">
-          <KeyRound className="h-6 w-6" />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-zinc-900 tracking-tight">{credentials.title || 'My Accounts'}</h3>
-          <p className="text-xs text-zinc-500 font-medium">Accounts VTOP manages for you — usernames &amp; login URLs</p>
-        </div>
+    <section className="uc-plate">
+      <div className="uc-plate-head">
+        <span className="uc-cap"><KeyRound className="uc-dir-inline" aria-hidden="true" />{credentials.title || 'My accounts'}</span>
+        <span className="uc-dir-count">Usernames &amp; login URLs</span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="uc-dir-cards uc-info-cards">
         {credentials.credentials.map((c: CredentialRow, i: number) => (
-          <div key={`${c.account}-${i}`} className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4">
-            <p className="font-bold text-zinc-900 text-sm">{c.account}</p>
-            <div className="mt-3 space-y-2 text-xs">
-              {c.username && (
-                <p className="flex items-center justify-between gap-2">
-                  <span className="text-zinc-500">Username</span>
-                  <span className="font-mono text-zinc-900">{c.username}</span>
+          <div key={`${c.account}-${i}`} className="uc-dir-card">
+            <p className="uc-dir-title">{c.account}</p>
+            <div className="uc-info-row">
+              {isReal(c.username) && (
+                <p className="uc-info-line">
+                  <span>Username</span>
+                  <span className="uc-num">{c.username}</span>
                 </p>
               )}
-              {c.defaultCredentials && (
-                <p className="flex items-center justify-between gap-2">
-                  <span className="text-zinc-500">Default password</span>
-                  <span className="font-mono text-zinc-900">
+              {isReal(c.defaultCredentials) && (
+                <p className="uc-info-line">
+                  <span>Default password</span>
+                  <span className="uc-num">
                     {revealed[i] ? c.defaultCredentials : '••••••••'}
                     <button
+                      type="button"
                       onClick={() => setRevealed((s) => ({ ...s, [i]: !s[i] }))}
-                      className="ml-2 text-zinc-500 hover:text-zinc-900 transition cursor-pointer align-middle"
+                      aria-label={revealed[i] ? `Hide password for ${c.account}` : `Show password for ${c.account}`}
+                      aria-pressed={Boolean(revealed[i])}
+                      className="uc-info-eye"
                       title={revealed[i] ? 'Hide' : 'Show'}
                     >
-                      {revealed[i] ? <EyeOff className="h-3.5 w-3.5 inline" /> : <Eye className="h-3.5 w-3.5 inline" />}
+                      {revealed[i] ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                     </button>
                   </span>
                 </p>
@@ -325,21 +313,21 @@ function CredentialsSection({ credentials }: { credentials?: CredentialsInfo | n
                   href={c.url.startsWith('http') ? c.url : `https://${c.url}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 transition"
+                  className="uc-info-link"
                 >
-                  <ExternalLink className="h-3 w-3" /> Open portal
+                  <ExternalLink aria-hidden="true" /> Open portal
                 </a>
               )}
-              {c.venueDate && <p className="text-[10px] text-zinc-600">{c.venueDate}</p>}
+              {isReal(c.venueDate) && <p className="uc-info-blank">{c.venueDate}</p>}
             </div>
           </div>
         ))}
       </div>
 
-      <p className="text-[10px] text-zinc-600 mt-5">
+      <p className="uc-info-note">
         Passwords are shown only on this device and are never stored or sent anywhere else.
       </p>
-    </div>
+    </section>
   );
 }
 
@@ -356,233 +344,172 @@ function MoreSection({
   extraCurricular?: ExtraCurricularInfo | null;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="uc-index">
       {/* Class messages */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-sky-500/10 border border-sky-500/20 rounded-2xl text-sky-600">
-            <Megaphone className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">Class Messages</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — StudentClassMessage</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><Megaphone className="uc-dir-inline" aria-hidden="true" />Class messages</span>
+          <span className="uc-dir-count">From VTOP</span>
         </div>
         {!classMessages || classMessages.length === 0 ? (
-          <p className="text-xs text-zinc-500">No class messages synced — re-sync to fetch announcements from VTOP.</p>
+          <p className="uc-info-blank uc-info-pad">No class messages synced — re-sync to fetch announcements from VTOP.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="uc-info-list">
             {classMessages.slice(0, 10).map((m, i) => (
-              <div key={i} className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-bold text-zinc-900">{m.subject || 'Message'}</p>
-                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">{m.date}</span>
+              <article key={i} className="uc-info-msg">
+                <div>
+                  <div className="uc-info-msg-top">
+                    <b>{isReal(m.subject) ? m.subject : 'Message'}</b>
+                    <time className="uc-num">{m.date}</time>
+                  </div>
+                  {isReal(m.from) && <p className="uc-info-from">From: {m.from}</p>}
+                  {m.body && <p className="uc-info-prose">{m.body}</p>}
                 </div>
-                {m.from && <p className="text-[10px] text-zinc-500 mt-0.5">From: {m.from}</p>}
-                {m.body && <p className="text-xs text-zinc-900 mt-2 leading-relaxed">{m.body}</p>}
-              </div>
+              </article>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {/* HOD / Dean */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-600">
-            <Users className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">HOD / Dean</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — viewHodDeanDetails</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><Users className="uc-dir-inline" aria-hidden="true" />HOD / Dean</span>
+          <span className="uc-dir-count">From VTOP</span>
         </div>
         {!hodDean ? (
-          <p className="text-xs text-zinc-500">Not synced yet — re-sync to fetch HOD / Dean details.</p>
+          <p className="uc-info-blank uc-info-pad">Not synced yet — re-sync to fetch HOD / Dean details.</p>
         ) : hodDean.rows.length === 0 ? (
-          <p className="text-xs text-zinc-500">VTOP returned no HOD / Dean details for your account.</p>
+          <p className="uc-info-blank uc-info-pad">VTOP returned no HOD / Dean details for your account.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {hodDean.rows.map((r, i) => (
-              <div key={i} className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
-                <p className="text-[9px] uppercase tracking-wide text-zinc-500 font-bold">{r.label}</p>
-                <p className="text-sm font-semibold text-zinc-900 mt-0.5 break-words">{r.value}</p>
-              </div>
-            ))}
-          </div>
+          <dl className="uc-facts uc-info-facts">
+            {hodDean.rows.map((r, i) => (<div key={i}><dt>{r.label}</dt><dd>{shown(r.value) || '—'}</dd></div>))}
+          </dl>
         )}
-      </div>
+      </section>
 
       {/* Wallet */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600">
-            <Wallet className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">Student Wallet</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — getStudentWallet</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><Wallet className="uc-dir-inline" aria-hidden="true" />Student wallet</span>
+          <span className="uc-dir-count">From VTOP</span>
         </div>
         {!wallet ? (
-          <p className="text-xs text-zinc-500">Not synced yet — re-sync to fetch your wallet balance.</p>
+          <p className="uc-info-blank uc-info-pad">Not synced yet — re-sync to fetch your wallet balance.</p>
         ) : wallet.rows.length === 0 ? (
-          <p className="text-xs text-zinc-500">{wallet.message || 'VTOP returned no wallet information for your account.'}</p>
+          <p className="uc-info-blank uc-info-pad">{wallet.message || 'VTOP returned no wallet information for your account.'}</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {wallet.rows.map((r, i) => (
-              <div key={i} className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
-                <p className="text-[9px] uppercase tracking-wide text-zinc-500 font-bold">{r.label}</p>
-                <p className="text-sm font-semibold text-zinc-900 mt-0.5 break-words">{r.value}</p>
-              </div>
-            ))}
-          </div>
+          <dl className="uc-facts uc-info-facts">
+            {wallet.rows.map((r, i) => (<div key={i}><dt>{r.label}</dt><dd>{shown(r.value) || '—'}</dd></div>))}
+          </dl>
         )}
-      </div>
+      </section>
 
       {/* Extra-curricular */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-fuchsia-500/10 border border-fuchsia-500/20 rounded-2xl text-fuchsia-600">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">Extra-Curricular</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — ExtraCurricular</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><Award className="uc-dir-inline" aria-hidden="true" />Extra-curricular</span>
+          <span className="uc-dir-count">From VTOP</span>
         </div>
         {!extraCurricular ? (
-          <p className="text-xs text-zinc-500">Not synced yet — re-sync to fetch your activities.</p>
+          <p className="uc-info-blank uc-info-pad">Not synced yet — re-sync to fetch your activities.</p>
         ) : extraCurricular.rows.length === 0 ? (
-          <p className="text-xs text-zinc-500">VTOP returned no extra-curricular activities for your account.</p>
+          <p className="uc-info-blank uc-info-pad">VTOP returned no extra-curricular activities for your account.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {extraCurricular.rows.map((r, i) => (
-              <div key={i} className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
-                <p className="text-[9px] uppercase tracking-wide text-zinc-500 font-bold">{r.label}</p>
-                <p className="text-sm font-semibold text-zinc-900 mt-0.5 break-words">{r.value}</p>
-              </div>
-            ))}
-          </div>
+          <dl className="uc-facts uc-info-facts">
+            {extraCurricular.rows.map((r, i) => (<div key={i}><dt>{r.label}</dt><dd>{shown(r.value) || '—'}</dd></div>))}
+          </dl>
         )}
-      </div>
+      </section>
 
       {/* Bank info */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600">
-            <Landmark className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">Bank Information</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — BankInfoStudent</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><Landmark className="uc-dir-inline" aria-hidden="true" />Bank information</span>
+          <span className="uc-dir-count">From VTOP</span>
         </div>
         {!bankInfo ? (
-          <p className="text-xs text-zinc-500">Not synced yet — re-sync to fetch your bank details from VTOP.</p>
+          <p className="uc-info-blank uc-info-pad">Not synced yet — re-sync to fetch your bank details from VTOP.</p>
         ) : bankInfo.rows.length === 0 ? (
-          <p className="text-xs text-zinc-500">{bankInfo.message || 'VTOP returned no bank information for your account.'}</p>
+          <p className="uc-info-blank uc-info-pad">{bankInfo.message || 'VTOP returned no bank information for your account.'}</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {bankInfo.rows.map((r, i) => (
-              <div key={i} className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
-                <p className="text-[9px] uppercase tracking-wide text-zinc-500 font-bold">{r.label}</p>
-                <p className="text-sm font-semibold text-zinc-900 mt-0.5 break-words">{r.value}</p>
-              </div>
-            ))}
-          </div>
+          <dl className="uc-facts uc-info-facts">
+            {bankInfo.rows.map((r, i) => (<div key={i}><dt>{r.label}</dt><dd>{shown(r.value) || '—'}</dd></div>))}
+          </dl>
         )}
-      </div>
+      </section>
 
       {/* Biometric */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-sky-500/10 border border-sky-500/20 rounded-2xl text-sky-600">
-            <Fingerprint className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">Biometric Info</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — BiometricInfo</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><Fingerprint className="uc-dir-inline" aria-hidden="true" />Biometric info</span>
+          <span className="uc-dir-count">From VTOP</span>
         </div>
         {!biometric ? (
-          <p className="text-xs text-zinc-500">Not synced yet — re-sync to fetch your biometric details.</p>
+          <p className="uc-info-blank uc-info-pad">Not synced yet — re-sync to fetch your biometric details.</p>
         ) : biometric.rows.length === 0 ? (
-          <p className="text-xs text-zinc-500">{biometric.message || 'VTOP returned no biometric information for your account.'}</p>
+          <p className="uc-info-blank uc-info-pad">{biometric.message || 'VTOP returned no biometric information for your account.'}</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {biometric.rows.map((r, i) => (
-              <div key={i} className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
-                <p className="text-[9px] uppercase tracking-wide text-zinc-500 font-bold">{r.label}</p>
-                <p className="text-sm font-semibold text-zinc-900 mt-0.5 break-words">{r.value}</p>
-              </div>
-            ))}
-          </div>
+          <dl className="uc-facts uc-info-facts">
+            {biometric.rows.map((r, i) => (<div key={i}><dt>{r.label}</dt><dd>{shown(r.value) || '—'}</dd></div>))}
+          </dl>
         )}
-      </div>
+      </section>
 
       {/* Proctor messages */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-violet-500/10 border border-violet-500/20 rounded-2xl text-violet-600">
-            <MessagesSquare className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">Messages from Proctor</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — viewMessagesSendByProctor</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><MessagesSquare className="uc-dir-inline" aria-hidden="true" />Messages from proctor</span>
+          <span className="uc-dir-count">From VTOP</span>
         </div>
         {!proctorMessages || proctorMessages.length === 0 ? (
-          <p className="text-xs text-zinc-500">No proctor messages synced — re-sync to fetch them from VTOP.</p>
+          <p className="uc-info-blank uc-info-pad">No proctor messages synced — re-sync to fetch them from VTOP.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="uc-info-list">
             {proctorMessages.map((m, i) => (
-              <div key={i} className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-bold text-zinc-900">{m.subject || 'Message'}</p>
-                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">{m.date}</span>
+              <article key={i} className="uc-info-msg">
+                <div>
+                  <div className="uc-info-msg-top">
+                    <b>{isReal(m.subject) ? m.subject : 'Message'}</b>
+                    <time className="uc-num">{m.date}</time>
+                  </div>
+                  {isReal(m.from) && <p className="uc-info-from">From: {m.from}</p>}
+                  {m.body && <p className="uc-info-prose">{m.body}</p>}
                 </div>
-                {m.from && <p className="text-[10px] text-zinc-500 mt-0.5">From: {m.from}</p>}
-                {m.body && <p className="text-xs text-zinc-900 mt-2 leading-relaxed">{m.body}</p>}
-              </div>
+              </article>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
       {/* Login history */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-600">
-            <CalendarClock className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-zinc-900 tracking-tight">Login History</h3>
-            <p className="text-[10px] text-zinc-500">From VTOP — recent login sessions</p>
-          </div>
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap"><CalendarClock className="uc-dir-inline" aria-hidden="true" />Login history</span>
+          <span className="uc-dir-count">Recent VTOP sessions</span>
         </div>
         {!loginHistory || loginHistory.length === 0 ? (
-          <p className="text-xs text-zinc-500">No login history synced.</p>
+          <p className="uc-info-blank uc-info-pad">No login history synced.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
+          <div className="uc-info-tbl">
+            <table className="uc-tbl">
               <thead>
-                <tr className="text-left text-[10px] uppercase tracking-widest text-zinc-500">
-                  <th scope="col" className="py-1.5 pr-3 font-extrabold">Date</th>
-                  <th scope="col" className="py-1.5 pr-3 font-extrabold">Time</th>
-                  <th scope="col" className="py-1.5 pr-3 font-extrabold">IP</th>
-                  <th scope="col" className="py-1.5 font-extrabold">Status</th>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Time</th>
+                  <th scope="col">IP</th>
+                  <th scope="col">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {loginHistory.slice(0, 20).map((r, i) => (
-                  <tr key={i} className="border-t border-zinc-200">
-                    <td className="py-1.5 pr-3 font-mono text-zinc-500">{r.date}</td>
-                    <td className="py-1.5 pr-3 font-mono text-zinc-500">{r.time}</td>
-                    <td className="py-1.5 pr-3 font-mono text-zinc-900">{r.ip}</td>
-                    <td className="py-1.5">
-                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${/success|logged in|passed/i.test(r.status) ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'}`}>
-                        {r.status || '—'}
+                  <tr key={i}>
+                    <td className="uc-num">{shown(r.date) || '—'}</td>
+                    <td className="uc-num">{shown(r.time) || '—'}</td>
+                    <td className="uc-num">{shown(r.ip) || '—'}</td>
+                    <td>
+                      <span className={`uc-dir-tag${/success|logged in|passed/i.test(r.status) ? ' is-good' : ' is-warn'}`}>
+                        {isReal(r.status) ? r.status : '—'}
                       </span>
                     </td>
                   </tr>
@@ -591,17 +518,17 @@ function MoreSection({
             </table>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="p-10 bg-white border border-zinc-200 rounded-3xl text-center">
-      <UserRound className="h-8 w-8 text-zinc-600 mx-auto mb-2" />
-      <p className="text-sm font-bold text-zinc-900">Nothing here yet</p>
-      <p className="text-[11px] text-zinc-500 mt-1 max-w-xs mx-auto">{text}</p>
+    <div className="uc-plate uc-plate--quiet uc-info-empty">
+      <UserRound aria-hidden="true" />
+      <b>Nothing here yet</b>
+      <p>{text}</p>
     </div>
   );
 }

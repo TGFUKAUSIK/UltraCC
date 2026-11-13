@@ -55,6 +55,88 @@ describe('saveAllData key handling', () => {
 });
 
 /**
+ * The grade card a student sees must be the card of the term they selected.
+ * `semesterGrades` is the only store that holds one row PER TERM, and IndexedDB
+ * hands those rows back in ascending key order — so reading "the first row"
+ * pinned whatever OLDEST term had ever been cached onto every term after it.
+ */
+describe('per-term grade card', () => {
+  const card = (gpa: number) => ({ available: true, gpa, grades: [{ courseCode: 'CSE2001' }] }) as never;
+  const profile = { registrationNo: '21BCE4444', name: 'Vidu' } as never;
+
+  beforeEach(async () => {
+    await vtopDb.clear();
+  });
+
+  it('answers with the selected term’s card, not the oldest cached one', async () => {
+    await vtopDb.saveAllData({ profile, semesterGrades: card(7.1) }, 'LIVE_VTOP', 'CH2024252', '21BCE4444');
+    await vtopDb.saveAllData({ profile, semesterGrades: card(8.4) }, 'LIVE_VTOP', 'CH2025261', '21BCE4444');
+
+    const cached = await vtopDb.getAllData();
+    expect(cached?.metadata.selectedSemesterId).toBe('CH2025261');
+    expect(cached?.semesterGrades?.gpa).toBe(8.4);
+  });
+
+  it('reports no card for a term VTOP has not graded, instead of borrowing another’s', async () => {
+    await vtopDb.saveAllData({ profile, semesterGrades: card(7.1) }, 'LIVE_VTOP', 'CH2024252', '21BCE4444');
+    // Switching to a live semester that has no grade card yet.
+    await vtopDb.saveAllData({ profile }, 'LIVE_VTOP', 'CH2026261', '21BCE4444');
+
+    const cached = await vtopDb.getAllData();
+    expect(cached?.semesterGrades).toBeNull();
+  });
+});
+
+/**
+ * `lastSyncedAt` is read by the "Synced …" label, the staleness check and the
+ * auto-refresh cooldown at once. Stamping it for a run in which every dataset
+ * failed therefore did three things wrong simultaneously: it lied about the
+ * data being fresh, it suppressed retries, and it hid the outage for the whole
+ * TTL window.
+ */
+describe('sync stamp honesty', () => {
+  const profile = { registrationNo: '21BCE5555', name: 'Kau' } as never;
+
+  beforeEach(async () => {
+    await vtopDb.clear();
+  });
+
+  it('stamps a real sync with the time data arrived', async () => {
+    const before = Date.now();
+    await vtopDb.saveAllData(
+      { profile, attendance: [{ courseCode: 'CSE2001' }] as never },
+      'LIVE_VTOP', 'CH2025261', '21BCE5555',
+    );
+    const cached = await vtopDb.getAllData();
+    expect(cached?.metadata.lastSyncedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it('carries the caller’s "nothing arrived" stamp through instead of now', async () => {
+    await vtopDb.saveAllData(
+      { profile, attendance: [{ courseCode: 'CSE2001' }] as never },
+      'LIVE_VTOP', 'CH2025261', '21BCE5555',
+      { syncedAt: 1_700_000_000_000 },
+    );
+    // A later run where every fetch failed: the caller passes the old stamp
+    // straight back, so the label keeps showing when data really last arrived.
+    await vtopDb.saveAllData({ profile }, 'LIVE_VTOP', 'CH2025261', '21BCE5555', {
+      syncedAt: 1_700_000_000_000,
+    });
+
+    const cached = await vtopDb.getAllData();
+    expect(cached?.metadata.lastSyncedAt).toBe(1_700_000_000_000);
+    // The failed run still cannot leave the cache looking freshly synced.
+    expect(Date.now() - (cached?.metadata.lastSyncedAt ?? 0)).toBeGreaterThan(60_000);
+  });
+
+  it('records "never synced" as 0, not as a timestamp', async () => {
+    await vtopDb.saveAllData({ profile }, 'LIVE_VTOP', 'CH2025261', '21BCE5555', { syncedAt: 0 });
+    const cached = await vtopDb.getAllData();
+    expect(cached?.metadata.lastSyncedAt).toBe(0);
+  });
+});
+
+/**
  * The syllabus cache — the one store that holds VTOP *document bytes*, so its
  * key is the whole privacy story: nothing may be readable under a different
  * student, semester or course, and signing out must empty it with everything

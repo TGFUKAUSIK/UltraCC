@@ -198,6 +198,53 @@ describe('syncSemesterData', () => {
     // Same term, same student: an outage shows stale-but-true rows, not an empty term.
     expect(payload.attendance).toEqual([{ courseCode: 'CSE2001', attended: 20, totalHeld: 25, percentage: 80 }]);
   });
+
+  /**
+   * The stored `lastSyncedAt` is read by the "Synced …" label, the staleness
+   * check and the auto-refresh cooldown all at once. A run that got nothing
+   * from VTOP must leave it where it was, or an outage gets displayed as six
+   * hours of confidently fresh data that will not be retried.
+   */
+  it('stamps a fully answered sync with the time it happened', async () => {
+    const before = Date.now();
+    await syncSemesterData(makeClient() as any, 'WS202526', SEMESTERS);
+
+    const opts = (saveSpy.mock.calls[0] as any[])[4];
+    expect(opts.syncedAt).toBeGreaterThanOrEqual(before);
+    expect(opts.syncedAt).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('keeps the previous sync time when VTOP answered none of the core pages', async () => {
+    const client = makeClient();
+    client.getProfile = vi.fn().mockRejectedValue(new Error('session expired'));
+    client.getAttendance = vi.fn().mockRejectedValue(new Error('session expired'));
+    client.getTimetable = vi.fn().mockRejectedValue(new Error('session expired'));
+    const cacheSpy = vi.spyOn(vtopDb, 'getAllData').mockResolvedValue({
+      metadata: {
+        registrationNo: '23BCE0000', selectedSemesterId: 'WS202526', lastSyncedAt: 1_700_000_000_000,
+      },
+    } as any);
+
+    await syncSemesterData(client as any, 'WS202526', SEMESTERS);
+    cacheSpy.mockRestore();
+
+    expect((saveSpy.mock.calls[0] as any[])[4].syncedAt).toBe(1_700_000_000_000);
+  });
+
+  it('records "never successfully synced" as 0 for an outage on a fresh device', async () => {
+    const client = makeClient();
+    client.getProfile = vi.fn().mockRejectedValue(new Error('offline'));
+    client.getAttendance = vi.fn().mockRejectedValue(new Error('offline'));
+    client.getTimetable = vi.fn().mockRejectedValue(new Error('offline'));
+    const cacheSpy = vi.spyOn(vtopDb, 'getAllData').mockResolvedValue(null);
+
+    await syncSemesterData(client as any, 'WS202526', SEMESTERS);
+    cacheSpy.mockRestore();
+
+    // 0, not now: the header shows "No successful sync yet" and the stale-data
+    // check keeps asking VTOP instead of settling for six hours.
+    expect((saveSpy.mock.calls[0] as any[])[4].syncedAt).toBe(0);
+  });
 });
 
 describe('account isolation across a shared device', () => {

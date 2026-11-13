@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isPendingAssessment, isEvaluatedAssessment, pendingWeightage, pendingCourseWeightage,
+  classifyAssignmentStatus,
 } from '../assessmentStatus';
 
 describe('isPendingAssessment', () => {
@@ -88,5 +89,43 @@ describe('pendingCourseWeightage', () => {
       { scored: 42, max: 50, weightage: 15 },
       { scored: 8, max: 10, weightage: 5 },
     ])).toBe(0);
+  });
+});
+
+/**
+ * The LMS assignment table has its own vocabulary: 'Not Graded', 'Submitted',
+ * 'Graded'. A plain substring test on those words reads "Not Graded" as a
+ * grade, which told students an assignment was marked when it was waiting to
+ * be. Negation wins over the positive word wherever both appear.
+ */
+describe('classifyAssignmentStatus', () => {
+  it('does not read a negated status as a grade', () => {
+    expect(classifyAssignmentStatus('Not Graded')).toBe('Pending');
+    expect(classifyAssignmentStatus('not graded')).toBe('Pending');
+    expect(classifyAssignmentStatus('Not Evaluated')).toBe('Pending');
+    expect(classifyAssignmentStatus('Not Submitted')).toBe('Pending');
+    expect(classifyAssignmentStatus('UNGRADED')).toBe('Pending');
+    expect(classifyAssignmentStatus('Not Uploaded')).toBe('Pending');
+  });
+
+  it('recognises the statuses VTOP actually publishes', () => {
+    expect(classifyAssignmentStatus('Graded')).toBe('Graded');
+    expect(classifyAssignmentStatus('Evaluated')).toBe('Graded');
+    expect(classifyAssignmentStatus('Marks Published')).toBe('Graded');
+    expect(classifyAssignmentStatus('Submitted')).toBe('Submitted');
+    expect(classifyAssignmentStatus('Uploaded')).toBe('Submitted');
+    expect(classifyAssignmentStatus('Checked')).toBe('Graded');
+  });
+
+  it('grades outrank a mere submission', () => {
+    expect(classifyAssignmentStatus('Submitted and Graded')).toBe('Graded');
+  });
+
+  it('treats an absent or unfamiliar status as Pending, never as done', () => {
+    expect(classifyAssignmentStatus(undefined)).toBe('Pending');
+    expect(classifyAssignmentStatus('')).toBe('Pending');
+    expect(classifyAssignmentStatus(null)).toBe('Pending');
+    expect(classifyAssignmentStatus('—')).toBe('Pending');
+    expect(classifyAssignmentStatus('In Progress')).toBe('Pending');
   });
 });

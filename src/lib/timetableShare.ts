@@ -13,6 +13,7 @@
  */
 
 import type { TimetableSlot } from '../lib/vtop/types';
+import { wholeDaysLeft } from '../utils/examUtils';
 
 export const SHARE_PREFIX = 'ULTRA-TT:v1';
 
@@ -149,7 +150,7 @@ export function decodeTimetableShare(text: string, now: number = Date.now()): Ti
 export function describeExpiry(expiresAt: number, now: number = Date.now()): string {
   const remaining = expiresAt - now;
   if (remaining <= 0) return 'expired';
-  const days = Math.ceil(remaining / (24 * 60 * 60 * 1000));
+  const days = wholeDaysLeft(remaining);
   if (days <= 1) return 'expires within a day';
   return `expires in ${days} days`;
 }

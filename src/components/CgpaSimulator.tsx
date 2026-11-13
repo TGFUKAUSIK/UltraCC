@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { CourseMarks } from '../types';
 import { Calculator, Target, Trophy, Trash2 } from 'lucide-react';
 import { useCgpaPrivacy } from '../lib/cgpaPrivacy';
+import { gpaLabel, publishedGpaLabel, requiredGpaLabel, gradePointsOf, VIT_BANDS, GRADE_ORDER, type GradeLetter } from '../utils/gradeModel';
 
 interface CgpaSimulatorProps {
   marks: CourseMarks[];
@@ -15,15 +16,14 @@ interface CgpaSimulatorProps {
   cumulativeCreditsEarned: number | null;
 }
 
-const GRADE_POINTS: Record<string, number> = {
-  S: 10,
-  A: 9,
-  B: 8,
-  C: 7,
-  D: 6,
-  E: 5,
-  F: 0,
-};
+// What each letter is worth in points, and where each letter starts, comes from
+// `gradeModel` — the same table the predictor, the reverse simulator and the
+// marks simulator read. This screen used to keep its own copy of both, so the
+// bands printed in its footer could outlive a change to the rule above them.
+const BAND_LABEL = VIT_BANDS
+  .filter((band) => band.grade !== 'F')
+  .map((band) => `${band.grade}≥${band.min}`)
+  .join(', ');
 
 const GRADE_COLORS: Record<string, string> = {
   S: '#10b981',
@@ -35,7 +35,6 @@ const GRADE_COLORS: Record<string, string> = {
   F: '#6b7280',
 };
 
-const GRADE_LIST = ['S', 'A', 'B', 'C', 'D', 'E', 'F'] as const;
 
 export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
   marks,
@@ -44,8 +43,8 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
   cumulativeCreditsEarned,
 }) => {
   const [cgpaHidden] = useCgpaPrivacy();
-  const [courseGrades, setCourseGrades] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = {};
+  const [courseGrades, setCourseGrades] = useState<Record<string, GradeLetter>>(() => {
+    const init: Record<string, GradeLetter> = {};
     marks.forEach((m) => {
       init[m.courseCode] = 'A';
     });
@@ -62,7 +61,7 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
     }
   });
 
-  const setGrade = (courseCode: string, grade: string) => {
+  const setGrade = (courseCode: string, grade: GradeLetter) => {
     setCourseGrades((prev) => ({ ...prev, [courseCode]: grade }));
   };
 
@@ -74,7 +73,7 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
     marks.forEach((m) => {
       const creds = creditsByCourse[m.courseCode];
       const grade = courseGrades[m.courseCode] || 'A';
-      const point = GRADE_POINTS[grade] ?? 0;
+      const point = gradePointsOf(grade);
       if (!(creds && creds > 0)) { missing += 1; return; }
       totalCreds += creds;
       totalPts += creds * point;
@@ -109,7 +108,10 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
     return totalCreditsThisSem > 0 ? neededPoints / totalCreditsThisSem : 0;
   }, [targetCgpaNum, creditsEarned, totalCreditsThisSem, currentCgpa]);
 
-  const isTargetPossible = requiredSgpa <= 10 && requiredSgpa >= 0;
+  // A target below the current CGPA asks for no SGPA at all: the points it
+  // needs come out negative. That is "already achieved", not "impossible".
+  const alreadyAtTarget = targetCgpaNum > 0 && requiredSgpa < 0;
+  const isTargetPossible = requiredSgpa <= 10 && (alreadyAtTarget || requiredSgpa >= 0);
 
   const saveGoal = () => {
     if (targetCgpaNum > 0 && isTargetPossible) {
@@ -127,7 +129,7 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
   if (!marks.length) return null;
 
   return (
-    <div className="mt-6 bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
+    <div className="mt-6 uc-plate p-6 sm:p-8">
       <div className="flex items-center space-x-3 mb-6">
         <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600">
           <Calculator className="h-6 w-6" />
@@ -139,18 +141,18 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
       </div>
 
       {savedGoal && (
-        <div className="p-4 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 rounded-2xl flex items-center justify-between mb-6">
+        <div className="p-4 acc-soft border acc-border rounded-2xl flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-500/20 rounded-xl">
-              <Trophy className="h-5 w-5 text-yellow-700" />
+            <div className="p-2 rounded-xl acc-text">
+              <Trophy className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[10px] text-indigo-700 uppercase tracking-wider font-extrabold">Current Goal</p>
-              <p className="text-lg font-black text-zinc-900">{savedGoal.target.toFixed(2)} CGPA</p>
-              <p className="text-xs text-indigo-700">Requires <strong className="text-zinc-900">{savedGoal.requiredSgpa.toFixed(2)}</strong> SGPA this semester</p>
+              <p className="text-[10px] acc-text uppercase tracking-wider font-extrabold">Current Goal</p>
+              <p className="text-lg font-black text-zinc-900">{gpaLabel(savedGoal.target)} CGPA</p>
+              <p className="text-xs acc-text">{savedGoal.requiredSgpa < 0 ? 'Already met — your current CGPA covers it' : <>Requires <strong className="text-zinc-900">{requiredGpaLabel(savedGoal.requiredSgpa)}</strong> SGPA this semester</>}</p>
             </div>
           </div>
-          <button onClick={clearGoal} className="p-2 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-zinc-900 transition cursor-pointer">
+          <button onClick={clearGoal} aria-label="Clear target CGPA" className="grid place-items-center min-h-[44px] min-w-[44px] rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-white/10 transition cursor-pointer">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
@@ -158,10 +160,10 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Current CGPA', value: cgpaHidden ? '••••' : currentCgpa.toFixed(2), color: 'text-blue-600' },
+          { label: 'Current CGPA', value: cgpaHidden ? '••••' : publishedGpaLabel(currentCgpa), color: 'acc-text' },
           { label: 'Credits Earned', value: String(creditsEarned), color: 'text-zinc-900' },
-          { label: 'Predicted SGPA', value: predictedSgpa.toFixed(2), color: 'text-purple-600' },
-          { label: 'Predicted CGPA', value: predictedCgpa.toFixed(2), color: 'text-emerald-600' },
+          { label: 'Predicted SGPA', value: gpaLabel(predictedSgpa), color: 'acc-text' },
+          { label: 'Predicted CGPA', value: gpaLabel(predictedCgpa), color: 'text-emerald-600' },
         ].map(({ label, value, color }) => (
           <div key={label} className="p-3 bg-zinc-50 border border-zinc-200 rounded-2xl">
             <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider">{label}</p>
@@ -172,7 +174,7 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
 
       <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <Target className="h-5 w-5 text-blue-600" />
+          <Target className="h-5 w-5 acc-text" />
           <h4 className="text-sm font-extrabold text-zinc-900">1. Set Target CGPA</h4>
         </div>
         <div className="flex gap-3">
@@ -185,21 +187,21 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
             value={targetCgpa}
             onChange={(e) => setTargetCgpa(e.target.value)}
             placeholder="e.g. 9.00"
-            className="flex-1 px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-zinc-900 text-sm font-mono focus:border-blue-500 focus:outline-none"
+            className="flex-1 uc-dir-input uc-num"
           />
           <button
             onClick={saveGoal}
             disabled={!targetCgpa || !isTargetPossible}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-zinc-900 rounded-xl font-bold text-sm transition cursor-pointer"
+            className="px-4 py-2.5 acc-bg disabled:opacity-40 rounded-xl font-bold text-sm transition cursor-pointer"
           >
             Save
           </button>
         </div>
         {targetCgpaNum > 0 && (
           <div className={`mt-3 p-3 rounded-xl border ${isTargetPossible ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
-            <p className="text-xs text-zinc-500">Required SGPA this semester</p>
+            <p className="text-xs text-zinc-500">{alreadyAtTarget ? 'Your current CGPA already meets this target' : 'Required SGPA this semester'}</p>
             <p className={`text-2xl font-black ${isTargetPossible ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {isTargetPossible ? requiredSgpa.toFixed(2) : 'Impossible (> 10.0)'}
+              {alreadyAtTarget ? '0.00' : isTargetPossible ? requiredGpaLabel(requiredSgpa) : 'Impossible (> 10.0)'}
             </p>
           </div>
         )}
@@ -207,19 +209,19 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
 
       <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <Calculator className="h-5 w-5 text-purple-600" />
+          <Calculator className="h-5 w-5 acc-text" />
           <h4 className="text-sm font-extrabold text-zinc-900">2. Expected Semester Grades</h4>
         </div>
 
         <div className="flex items-center justify-between p-4 bg-white rounded-xl mb-4">
           <div className="text-center flex-1">
             <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Predicted SGPA</p>
-            <p className="text-2xl font-black text-purple-600 font-mono">{predictedSgpa.toFixed(2)}</p>
+            <p className="text-2xl font-black acc-text font-mono">{gpaLabel(predictedSgpa)}</p>
           </div>
           <span className="text-zinc-600 text-lg mx-2">→</span>
           <div className="text-center flex-1">
             <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">New CGPA</p>
-            <p className="text-2xl font-black text-blue-600 font-mono">{predictedCgpa.toFixed(2)}</p>
+            <p className="text-2xl font-black text-emerald-600 font-mono">{gpaLabel(predictedCgpa)}</p>
           </div>
         </div>
 
@@ -227,14 +229,14 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
           {marks.map((m) => {
             const credits = creditsByCourse[m.courseCode];
             const grade = courseGrades[m.courseCode] || 'A';
-            const point = GRADE_POINTS[grade] ?? 0;
+            const point = gradePointsOf(grade);
 
             return (
               <div key={m.courseCode} className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl hover:border-zinc-200 transition">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-zinc-900">{m.courseCode} · <span className="text-zinc-500 font-normal text-xs">{m.courseTitle}</span></p>
-                    <p className="text-[11px] text-blue-600 font-mono">
+                    <p className="text-[11px] text-zinc-500 font-mono">
                       {credits > 0 ? `${credits} CR` : '— CR · re-sync for credits'}
                       {' · '}
                       <span style={{ color: GRADE_COLORS[grade] }} className="font-bold">{grade}</span> ({point} pts)
@@ -246,7 +248,7 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
                     lines, stay at least 40px wide/44px tall, and announce the
                     course plus the selected state. */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {GRADE_LIST.map((g) => (
+                  {GRADE_ORDER.map((g) => (
                     <button
                       key={g}
                       type="button"
@@ -258,7 +260,7 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
                           ? 'text-zinc-900 shadow-lg'
                           : 'bg-zinc-100 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200'
                       }`}
-                      style={grade === g ? { backgroundColor: GRADE_COLORS[g], boxShadow: `0 0 12px ${GRADE_COLORS[g]}40` } : undefined}
+                      style={grade === g ? { backgroundColor: GRADE_COLORS[g] } : undefined}
                     >
                       {g}
                     </button>
@@ -281,22 +283,22 @@ export const CgpaSimulator: React.FC<CgpaSimulatorProps> = ({
       <div className="grid grid-cols-3 gap-3">
         <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-center">
           <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider">Predicted SGPA</p>
-          <p className="text-3xl font-black text-purple-600 font-mono mt-1">{predictedSgpa.toFixed(2)}</p>
+          <p className="text-3xl font-black acc-text font-mono mt-1">{gpaLabel(predictedSgpa)}</p>
         </div>
         <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-center">
           <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider">Predicted CGPA</p>
-          <p className="text-3xl font-black text-blue-600 font-mono mt-1">{predictedCgpa.toFixed(2)}</p>
+          <p className="text-3xl font-black text-emerald-600 font-mono mt-1">{gpaLabel(predictedCgpa)}</p>
         </div>
         <div className={`p-4 border rounded-2xl text-center ${targetCgpaNum > 0 && !isTargetPossible ? 'bg-rose-500/10 border-rose-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
           <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider">Required SGPA</p>
           <p className={`text-3xl font-black font-mono mt-1 ${targetCgpaNum > 0 && !isTargetPossible ? 'text-rose-600' : 'text-emerald-600'}`}>
-            {targetCgpaNum > 0 ? (isTargetPossible ? requiredSgpa.toFixed(2) : 'N/A') : '—'}
+            {targetCgpaNum > 0 ? (isTargetPossible ? requiredGpaLabel(Math.max(0, requiredSgpa)) : 'N/A') : '—'}
           </p>
         </div>
       </div>
 
       <p className="text-[10px] text-zinc-600 mt-4 leading-relaxed">
-        Grade bands: S≥90, A≥80, B≥70, C≥60, D≥50, E≥40. VIT uses relative grading — treat this as a planning aid.
+        Grade bands: {BAND_LABEL}. VIT grades relatively in practice, so treat these as a planning aid.
       </p>
     </div>
   );

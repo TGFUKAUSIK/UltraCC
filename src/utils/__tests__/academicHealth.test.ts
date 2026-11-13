@@ -1,20 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import {
-  calculateAcademicHealth,
-  calculateExamPressure,
-  calculateWeeklySummary,
-} from '../academicHealth';
-import { AttendanceRecord, ExamSchedule, TimetableSlot } from '../../types';
+import { calculateAcademicHealth, calculateWeeklySummary } from '../academicHealth';
+import { AttendanceRecord, TimetableSlot } from '../../types';
 
 describe('academicHealth analytics', () => {
   it('handles empty / unsynced profile safely without throwing', () => {
     const health = calculateAcademicHealth(null, []);
     expect(health.score).toBeNull();
     expect(health.status).toBe('Insufficient Data');
-
-    const pressure = calculateExamPressure([]);
-    expect(pressure.totalExams).toBe(0);
-    expect(pressure.pressureLevel).toBe('Relaxed');
 
     const summary = calculateWeeklySummary([]);
     expect(summary.totalSlots).toBe(0);
@@ -32,7 +24,6 @@ describe('academicHealth analytics', () => {
         percentage: 93.3,
         facultyName: 'Dr. Test',
         slot: 'A1',
-        category: 'Safe',
         lastUpdated: '2026-03-01',
         venue: 'AB1-201',
       },
@@ -45,7 +36,6 @@ describe('academicHealth analytics', () => {
         percentage: 80,
         facultyName: 'Dr. Math',
         slot: 'B1',
-        category: 'Safe',
         lastUpdated: '2026-03-01',
         venue: 'AB1-202',
       },
@@ -68,7 +58,6 @@ describe('academicHealth analytics', () => {
         percentage: 60,
         facultyName: 'Dr. Debar',
         slot: 'C1',
-        category: 'Critical',
         lastUpdated: '2026-03-01',
         venue: 'AB1-203',
       },
@@ -76,7 +65,7 @@ describe('academicHealth analytics', () => {
 
     const health = calculateAcademicHealth(6.5, attendance);
     expect(health.score).toBeLessThan(75);
-    expect(health.recommendations.some((r) => r.includes('under 75%'))).toBe(true);
+    expect(health.recommendations.some((r) => r.includes('under VTOP’s 75% line'))).toBe(true);
   });
 
   it('correctly calculates weekly load and identifies busiest day', () => {
@@ -106,7 +95,7 @@ describe('academicHealth analytics', () => {
     expect(summary.labSlots).toBe(4); // four lab periods of load
   });
 
-  it('normalizes marks per curriculum scheme (lab vs theory) and keeps legacy /50 when unknown', () => {
+  it('normalizes marks over the weight VTOP graded, never an assumed 50', () => {
     const marks = [
       {
         courseCode: 'CSE1001',
@@ -141,34 +130,81 @@ describe('academicHealth analytics', () => {
     ] as any[];
     const attendance = [{
       courseCode: 'CSE1001', courseTitle: 'Theory Course', type: 'ETH' as const, slot: 'A1',
-      facultyName: 'Dr. T', attended: 30, totalHeld: 30, percentage: 100, category: 'Safe' as const,
+      facultyName: 'Dr. T', attended: 30, totalHeld: 30, percentage: 100,
       lastUpdated: '2026-09-01', venue: 'SJT',
     }];
     const health = calculateAcademicHealth(null, attendance, marks);
-    // Theory: 75/50 evaluated weight → 100% · Lab: 34/40 evaluated weight → 85%.
+    // Theory: 47 earned over the 50 weight VTOP graded → 94%.
+    // Lab: 34 earned over its two graded 20-weight experiments → 85%.
     expect(health.marksScore).toBe(90);
     expect(health.score).not.toBeNull();
   });
 
-  it('evaluates exam density and pressure metrics', () => {
-    const today = new Date();
-    const d1 = new Date(today);
-    d1.setDate(today.getDate() + 3);
-    const d2 = new Date(today);
-    d2.setDate(today.getDate() + 5);
+  it('leaves out a course it cannot measure instead of dividing it by 50', () => {
+    // The lab course is measurable: three experiments at 15 weight, 36 earned
+    // out of 45 graded = 80%. The mystery course has no curriculum and no
+    // declared weights, so it has no denominator — the old code still scored it
+    // 20/50 = 40% and dragged the average to 60 off a number VTOP never gave.
+    const lab = {
+      courseCode: 'CSE1002L',
+      courseTitle: 'Lab Course',
+      cat1: { scored: 0, max: 0, weightage: 0 },
+      cat2: { scored: 0, max: 0, weightage: 0 },
+      da1: { scored: 0, max: 0, weightage: 0 },
+      da2: { scored: 0, max: 0, weightage: 0 },
+      quiz: { scored: 0, max: 0, weightage: 0 },
+      fat: { scored: 0, max: 100, weightage: 40, status: 'Pending' },
+      extraComponents: [
+        { title: 'Experiment 1', scored: 90, max: 100, weightage: 15, status: 'Evaluated' },
+        { title: 'Experiment 2', scored: 80, max: 100, weightage: 15, status: 'Evaluated' },
+        { title: 'Experiment 3', scored: 70, max: 100, weightage: 15, status: 'Evaluated' },
+      ],
+      totalScoredSoFar: 36,
+      currentEstimatedGrade: '',
+    };
+    const mystery = {
+      courseCode: 'XYZ9999',
+      courseTitle: 'Open Elective',
+      cat1: { scored: 0, max: 0, weightage: 0 },
+      cat2: { scored: 0, max: 0, weightage: 0 },
+      da1: { scored: 0, max: 0, weightage: 0 },
+      da2: { scored: 0, max: 0, weightage: 0 },
+      quiz: { scored: 0, max: 0, weightage: 0 },
+      fat: { scored: 0, max: 0, weightage: 0 },
+      extraComponents: [{ title: 'Internal', scored: 20, max: 50, weightage: 0, status: 'Evaluated' }],
+      totalScoredSoFar: 20,
+      currentEstimatedGrade: '',
+    };
+    expect(calculateAcademicHealth(8, [], [lab] as any[]).marksScore).toBe(80);
+    expect(calculateAcademicHealth(8, [], [lab, mystery] as any[]).marksScore).toBe(80);
+    // Nothing measurable at all → no marks component, and the health index
+    // composes from CGPA and attendance alone.
+    expect(calculateAcademicHealth(8, [], [mystery] as any[]).marksScore).toBeNull();
+  });
 
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const fmt = (d: Date) => `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
-
-    const exams: ExamSchedule[] = [
-      { id: 'ex1', courseCode: 'CSE1001', courseTitle: 'DSA', date: fmt(d1), time: '10:00 AM', slot: 'A1', venue: 'AB1-101', seatNo: '12', examType: 'CAT 1', syllabusTopics: [], topicsCompleted: 0, studyPriority: 'High' },
-      { id: 'ex2', courseCode: 'MAT2001', courseTitle: 'Calculus', date: fmt(d2), time: '02:00 PM', slot: 'B1', venue: 'AB1-102', seatNo: '14', examType: 'CAT 1', syllabusTopics: [], topicsCompleted: 0, studyPriority: 'Medium' },
-    ];
-
-    const pressure = calculateExamPressure(exams);
-    expect(pressure.totalExams).toBe(2);
-    expect(pressure.examsIn7Days).toBe(2);
-    expect(pressure.pressureLevel).toBe('High');
+  it('stops reporting a perfect 100 the moment the FAT is graded', () => {
+    // 36 earned over 45 graded experiment weight, then a 80/100 lab FAT worth
+    // 40: earned 68 over weight 85 = 80%. The numerator used to take the FAT's
+    // marks while the denominator refused its weight, reading 68/45 = 151% and
+    // showing every post-FAT course as a flawless 100.
+    const marks = [{
+      courseCode: 'CSE1002L',
+      courseTitle: 'Lab Course',
+      cat1: { scored: 0, max: 0, weightage: 0 },
+      cat2: { scored: 0, max: 0, weightage: 0 },
+      da1: { scored: 0, max: 0, weightage: 0 },
+      da2: { scored: 0, max: 0, weightage: 0 },
+      quiz: { scored: 0, max: 0, weightage: 0 },
+      fat: { scored: 80, max: 100, weightage: 40, status: 'Evaluated' },
+      extraComponents: [
+        { title: 'Experiment 1', scored: 90, max: 100, weightage: 15, status: 'Evaluated' },
+        { title: 'Experiment 2', scored: 80, max: 100, weightage: 15, status: 'Evaluated' },
+        { title: 'Experiment 3', scored: 70, max: 100, weightage: 15, status: 'Evaluated' },
+      ],
+      totalScoredSoFar: 68,
+      currentEstimatedGrade: '',
+    }];
+    expect(calculateAcademicHealth(8, [], marks as any[]).marksScore).toBe(80);
   });
 });
 
@@ -182,7 +218,6 @@ describe('academic health regressions', () => {
     attended,
     totalHeld,
     percentage: totalHeld > 0 ? Math.round((attended / totalHeld) * 1000) / 10 : 0,
-    category: 'Safe',
     lastUpdated: '2026-09-01',
     venue: 'SJT',
   });
@@ -206,7 +241,24 @@ describe('academic health regressions', () => {
   it('flags a low-percentage course even when the aggregate is safe', () => {
     const health = calculateAcademicHealth(null, [att('CSE1001', 20, 30), att('MAT2001', 29, 30)]);
     expect(health.attendanceScore).toBe(82);
-    expect(health.recommendations.some((r) => r.includes('under 75%'))).toBe(true);
+    expect(health.recommendations.some((r) => r.includes('under VTOP’s 75% line'))).toBe(true);
+  });
+
+  it('names one short component in the singular and two in the plural', () => {
+    // A student reading this cannot count the rows, so the sentence has to agree
+    // with the number it prints.
+    expect(calculateAcademicHealth(null, [att('CSE1001', 20, 30)]).recommendations.join(' '))
+      .toContain('One component is under VTOP’s 75% line (CSE1001 theory 66.7%)');
+    expect(calculateAcademicHealth(null, [att('CSE1001', 20, 30), att('MAT2001', 20, 30)]).recommendations.join(' '))
+      .toContain('2 components are under VTOP’s 75% line');
+  });
+
+  it('says what to do about a short component instead of only labelling it', () => {
+    const alert = calculateAcademicHealth(null, [att('CSE1001', 20, 30)]).recommendations.join(' ');
+    expect(alert).toMatch(/attend its next classes to get back above it\.$/);
+    // The old sentence opened with "Attendance Alert:" — a log prefix, not advice.
+    expect(alert).not.toMatch(/Attendance Alert/);
+    expect(alert).not.toMatch(/mandatory threshold/i);
   });
 
   it('returns Insufficient Data instead of a fabricated zero when nothing is usable', () => {

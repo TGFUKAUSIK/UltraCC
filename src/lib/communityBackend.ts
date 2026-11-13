@@ -6,11 +6,12 @@
  * VTOP data and no credentials are ever sent to this project. Each feature
  * keeps its own capability-token model (a per-browser device code) and its own
  * SECURITY DEFINER RPCs server-side.
+ *
+ * Deploy-time configuration: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+ * (see .env.example) to your own Supabase project. Values that still read as
+ * placeholders are treated as unset.
  */
 
-// Deploy-time configuration. The public build ships placeholders — set
-// VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (see .env.example) to your own
-// Supabase project. Values that still read as placeholders are treated as unset.
 function envValue(key: string, fallback: string): string {
   const value = typeof import.meta !== 'undefined' ? (import.meta as any).env?.[key] : undefined;
   if (!value) return fallback;

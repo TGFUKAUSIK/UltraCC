@@ -167,3 +167,24 @@ export function sessionPeriodCount(slot: Pick<SessionRow, 'startTime' | 'endTime
   if (duration !== null && duration >= 80) return 2;
   return 1;
 }
+
+/**
+ * How many 50-minute attendance periods one class costs, for rows that carry
+ * no clock: a VTOP attendance record has a slot and a course type but no
+ * start/end time.
+ *
+ * This is the bridge between the two units the app stores. VTOP's attendance
+ * summary counts periods — a lab appears with twice as many held periods as
+ * sessions — while a student acts in classes. A lab session is a two-period
+ * block even when the row names only its first token, because VTOP's detail
+ * link spells `L31` for the timetable's `L31+L32`. Theory is always one.
+ */
+export function periodsPerClass(slot: Pick<SessionRow, 'slot' | 'isLab' | 'courseType'>): number {
+  if (!isLabSession(slot)) return 1;
+  const labTokens = (slot.slot || '')
+    .toUpperCase()
+    .split('+')
+    .map((token) => token.trim())
+    .filter(isLabSlotToken);
+  return Math.max(2, labTokens.length);
+}

@@ -158,15 +158,15 @@ export const profileHtml = `<!doctype html>
 <div class="student-info">
   <h3>Student Dashboard</h3>
   <table class="table">
-    <tr><td>Reg No</td><td>23BCE1082</td></tr>
-    <tr><td>Student Name</td><td>Kausik</td></tr>
+    <tr><td>Reg No</td><td>23BCE0000</td></tr>
+    <tr><td>Student Name</td><td>Aarav</td></tr>
     <tr><td>Program</td><td>B.Tech</td></tr>
     <tr><td>Branch</td><td>Computer Science &amp; Engineering</td></tr>
     <tr><td>School</td><td>SCOPE</td></tr>
     <tr><td>Semester</td><td>4</td></tr>
     <tr><td>CGPA</td><td>8.92</td></tr>
     <tr><td>Proctor Name</td><td>Dr. R. Ramanathan</td></tr>
-    <tr><td>Proctor Email</td><td>ramanathan.r@vit.ac.in</td></tr>
+    <tr><td>Proctor Email</td><td>faculty.name@vit.ac.in</td></tr>
     <tr><td>Proctor Mobile</td><td>+91 98765 43210</td></tr>
     <tr><td>Hostel</td><td>MH Block D</td></tr>
     <tr><td>Room No</td><td>D-514</td></tr>
@@ -412,7 +412,7 @@ export const proctorHtml = `<!doctype html>
 <h3 class="box-title"><b>Proctor Details</b></h3>
 <table class="table table-bordered">
   <tr><td>Faculty Name</td><td>Dr. R. Ramanathan</td></tr>
-  <tr><td>Faculty Email</td><td>r.ramanathan@vit.ac.in</td></tr>
+  <tr><td>Faculty Email</td><td>faculty.name@vit.ac.in</td></tr>
   <tr><td>Faculty Mobile</td><td>9876501234</td></tr>
   <tr><td>Faculty Designation</td><td>Associate Professor</td></tr>
 </table>
@@ -420,19 +420,19 @@ export const proctorHtml = `<!doctype html>
 
 export const profileRealHtml = `<!doctype html>
 <html><body>
-<input type="hidden" name="regno" value="23BCE1082" />
+<input type="hidden" name="regno" value="23BCE0000" />
 <div id="profileTable">
   <table class="table">
-    <tr><td>Student Name</td><td>Kausik R</td></tr>
+    <tr><td>Student Name</td><td>Aarav R</td></tr>
     <tr><td>Application Number</td><td>AP2024123456</td></tr>
     <tr><td>Programme</td><td>UG</td></tr>
     <tr><td>Branch / Group Studied</td><td>PCM</td></tr>
     <tr><td>School</td><td>SCOPE</td></tr>
-    <tr><td>Email</td><td>kausik.r2023@vitstudent.ac.in</td></tr>
+    <tr><td>Email</td><td>student.name2025@vitstudent.ac.in</td></tr>
     <tr><td>Mobile Number</td><td>9876543210</td></tr>
     <tr><td>Blood Group</td><td>O+</td></tr>
     <tr><td>Proctor Name</td><td>Dr. R. Ramanathan</td></tr>
-    <tr><td>Proctor Email</td><td>r.ramanathan@vit.ac.in</td></tr>
+    <tr><td>Proctor Email</td><td>faculty.name@vit.ac.in</td></tr>
     <tr><td>Proctor Mobile</td><td>9445500123</td></tr>
   </table>
 </div>

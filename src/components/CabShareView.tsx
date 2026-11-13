@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useReducer, useState } from 'react';
 import {
-  Car, Plus, Users, Clock, Loader2, WifiOff, Trash2, ShieldAlert, RefreshCw, LogOut, Info,
+  Plus, Users, Clock, Loader2, WifiOff, Trash2, ShieldAlert, RefreshCw, LogOut, Info,
   Phone, EyeOff, MessageCircle, UserCheck,
 } from 'lucide-react';
 import {
@@ -20,6 +20,7 @@ import {
   type RideCodeMap,
 } from '../lib/cabshareOwnership';
 import { debugErrorDetail, humanErrorCopy } from '../lib/errorCopy';
+import { showToast } from '../lib/toast';
 import { localTodayIso } from '../utils/localDate';
 
 function memberToken(id: number): string {
@@ -216,73 +217,86 @@ export const CabShareView: React.FC = () => {
   };
 
   return (
-    <div className="community-page cabshare-page">
-      <div className="community-page-heading">
-        <div><span className="community-eyebrow">Campus services · community board</span><h2>Cab Share</h2><p>Coordinate rides to and from VIT Chennai with other students.</p></div>
-        <button
-          onClick={() => { if (!numberSaved) { setError('Save your contact number first — it keeps the ride board accountable and enables confirmed contact exchange.'); return; } setShowPost((value) => !value); }}
-          className="portal-primary-button"
-        >
-          <Plus className="h-4 w-4" /> Post a ride
-        </button>
-      </div>
-
-      <div className="community-stat-grid">
-        <Stat label="Open rides" value={String(openRides.length)} />
-        <Stat label="Seats available" value={String(seatsAvailable)} />
-        <Stat label="Listed rides" value={String(rides.length)} />
-        <div className="community-live-state"><span className="live-dot" /> <span>Live board</span><small>{refreshing ? 'Updating…' : realtimeStatus === 'live' ? 'Realtime updates' : 'Refreshes every few seconds'}</small><button onClick={() => void load(true)} aria-label="Refresh cab board"><RefreshCw className={refreshing ? 'spin' : ''} /></button></div>
-      </div>
-
-      {backendOutdated && (
-        <div className="community-panel backend-update-panel" role="status" aria-live="polite">
-          <div className="community-panel-heading">
-            <div>
-              <h3><WifiOff className="h-4 w-4 inline" /> Ride board is read-only right now</h3>
-              <p>{RIDE_BOARD_BACKEND_MESSAGE}</p>
-            </div>
+    <div className="uc-index pb-12">
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">Campus services · community board</span>
+            <h2 className="uc-dir-name">Cab share</h2>
+            <p className="uc-note">Coordinate rides to and from VIT Chennai with other students.</p>
           </div>
-          <p className="phone-privacy-note">Nothing on this device was changed. This is a setting on the shared board itself and clears once it is updated — please check back a little later.</p>
-          <div className="phone-panel-actions">
-            <button className="portal-secondary-button" onClick={() => void load(true)}>
-              <RefreshCw className={refreshing ? 'spin' : ''} /> Re-check the board
+          <div className="uc-dir-rail">
+            <button onClick={() => void load(true)} aria-label="Refresh cab board" className="uc-dir-go"><RefreshCw className={refreshing ? 'spin' : ''} aria-hidden="true" /></button>
+            <button
+              onClick={() => { if (!numberSaved) { setError('Save your contact number first — it keeps the ride board accountable and enables confirmed contact exchange.'); return; } setShowPost((value) => !value); }}
+              className="uc-dir-go acc-bg"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Post a ride
             </button>
           </div>
         </div>
+        <dl className="uc-facts">
+          <div><dt>Open rides</dt><dd className="uc-num">{openRides.length}</dd></div>
+          <div><dt>Seats available</dt><dd className="uc-num">{seatsAvailable}</dd></div>
+          <div><dt>Listed rides</dt><dd className="uc-num">{rides.length}</dd></div>
+          <div><dt>Live board</dt><dd>{refreshing ? 'Updating…' : realtimeStatus === 'live' ? 'Realtime updates' : 'Refreshes every few seconds'}</dd></div>
+        </dl>
+      </section>
+
+      {backendOutdated && (
+        <section className="uc-plate" role="status" aria-live="polite">
+          <div className="uc-plate-head"><span className="uc-cap">Ride board is read-only right now</span><WifiOff className="h-4 w-4" aria-hidden="true" /></div>
+          <div className="uc-dir-detail">
+            <p className="uc-dir-sub is-ink">{RIDE_BOARD_BACKEND_MESSAGE}</p>
+            <p className="uc-dir-note uc-dir-sub">Nothing on this device was changed. This is a setting on the shared board itself and clears once it is updated — please check back a little later.</p>
+            <div className="uc-dir-form-foot">
+              <button className="uc-dir-go" onClick={() => void load(true)}><RefreshCw className={refreshing ? 'spin' : ''} aria-hidden="true" /> Re-check the board</button>
+            </div>
+          </div>
+        </section>
       )}
 
       <PhonePanel state={phone} loading={phoneLoading} deviceCode={deviceCode} dispatch={dispatchPhone} onBackendOutdated={() => setBackendOutdated(true)} />
 
-      {error && <div className="community-alert error"><WifiOff className="h-4 w-4" /><span>{error}</span></div>}
+      {error && <div className="uc-dir-alert"><WifiOff aria-hidden="true" /><span>{error}</span></div>}
       {/* Rendered at page level on purpose: it used to sit inside the post
           panel, which the submit handler closes — so the poster code, the one
           thing needed to manage the ride, was never actually shown. */}
-      {myCode && <div className="community-success">Ride posted. Your poster code is <strong>{myCode}</strong>; this device keeps it so “Riders” and “Delete” work on your listing without typing it back in. Keep the code if you post from another phone.</div>}
+      {myCode && <div className="uc-note-row uc-note-row--good"><span>Ride posted. Your poster code is <b className="uc-num">{myCode}</b>; this device keeps it so “Riders” and “Delete” work on your listing without typing it back in. Keep the code if you post from another phone.</span></div>}
 
       {showPost && (
-        <div className="community-panel cab-post-panel">
-          <div className="community-panel-heading"><div><h3>Post a ride</h3><p>Only the details you enter are shared on this public board.</p></div><ShieldAlert className="h-5 w-5" /></div>
-          <div className="community-form-grid">
-            <Field label="From"><input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="e.g. T. Nagar, Porur…" maxLength={120} /></Field>
-            <Field label="To"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="e.g. VIT Chennai" maxLength={120} /></Field>
-            <Field label="Date"><input type="date" min={today} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-            <Field label="Time"><input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
-            <Field label="Seats available"><select value={seats} onChange={(e) => setSeats(Number(e.target.value))}>{[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>
-            <Field label="Contact handle (optional — Telegram/Instagram, not your phone)"><input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="e.g. @your_handle" maxLength={100} /></Field>
-            <Field label="Notes (optional)" wide><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Pickup details or fare notes" maxLength={240} /></Field>
+        <section className="uc-plate">
+          <div className="uc-plate-head"><span className="uc-cap">Post a ride</span><ShieldAlert className="h-4 w-4" aria-hidden="true" /></div>
+          <div className="uc-dir-detail">
+            <p className="uc-dir-sub">Only the details you enter are shared on this public board.</p>
+            <div className="uc-dir-form">
+              <Field label="From"><input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="e.g. T. Nagar, Porur…" maxLength={120} className="uc-dir-input" /></Field>
+              <Field label="To"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="e.g. VIT Chennai" maxLength={120} className="uc-dir-input" /></Field>
+              <Field label="Date"><input type="date" min={today} value={date} onChange={(e) => setDate(e.target.value)} className="uc-dir-input uc-num" /></Field>
+              <Field label="Time"><input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="uc-dir-input uc-num" /></Field>
+              <Field label="Seats available"><select value={seats} onChange={(e) => setSeats(Number(e.target.value))} className="uc-dir-select">{[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>
+              <Field label="Contact handle (optional — Telegram/Instagram, not your phone)"><input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="e.g. @your_handle" maxLength={100} className="uc-dir-input" /></Field>
+              <Field label="Notes (optional)" wide><input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Pickup details or fare notes" maxLength={240} className="uc-dir-input" /></Field>
+            </div>
+            <div className="uc-dir-form-foot">
+              <p className="uc-dir-note uc-dir-sub"><ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" /> No registration number is stored. Your contact number is shared ONLY with ride partners you confirm. This device remembers the poster code for rides you publish.</p>
+              <button onClick={() => void submit()} disabled={posting || !numberSaved || !from.trim() || !to.trim() || !date || !time} className="uc-dir-go acc-bg">{posting ? 'Posting…' : 'Publish ride'}</button>
+            </div>
           </div>
-          <div className="community-form-footer"><p><ShieldAlert className="h-3.5 w-3.5" /> No registration number is stored. Your contact number is shared ONLY with ride partners you confirm. This device remembers the poster code for rides you publish.</p><button onClick={() => void submit()} disabled={posting || !numberSaved || !from.trim() || !to.trim() || !date || !time} className="portal-primary-button">{posting ? 'Posting…' : 'Publish ride'}</button></div>
-        </div>
+        </section>
       )}
 
-      <div className="community-panel">
-        <div className="community-panel-heading ride-board-heading"><div><h3>Ride board</h3><p>Seat counts update live as riders join and leave.</p></div><div className="ride-board-actions"><button className={showExpired ? 'selected' : ''} onClick={() => setShowExpired((value) => !value)}>{showExpired ? 'Hide expired' : 'Show expired'}</button></div></div>
-        {loading && <div className="community-empty"><Loader2 className="spin" /><span>Loading the live ride board…</span></div>}
-        {!loading && visibleRides.length === 0 && <div className="community-empty"><Car /><span>{rides.length ? 'No current rides match this view.' : 'No rides have been posted yet.'}<small>Post a ride when you know your route and departure time.</small></span></div>}
-        {!loading && visibleRides.length > 0 && <div className="ride-list">{visibleRides.map(({ ride, state }) => <RideRow key={ride.id} ride={ride} state={state} isJoined={Boolean(joined[ride.id]) || hasMemberToken(ride.id)} canLeave={Boolean(memberAware[ride.id]) || hasMemberToken(ride.id)} ownedCode={posterCodeForRide(rideCodes, rideKey(ride))} onJoin={join} onLeave={leave} onDelete={remove} />)}</div>}
-      </div>
+      <section className="uc-plate uc-dir-ledger">
+        <div className="uc-plate-head">
+          <span className="uc-cap">Ride board</span>
+          <button className={`uc-dir-go ${showExpired ? 'is-on' : ''}`} onClick={() => setShowExpired((value) => !value)}>{showExpired ? 'Hide expired' : 'Show expired'}</button>
+        </div>
+        {loading && <div className="uc-dir-loading"><Loader2 className="spin" aria-hidden="true" /><span>Loading the live ride board…</span></div>}
+        {!loading && visibleRides.length === 0 && <div className="uc-dir-blank"><b>{rides.length ? 'No current rides match this view.' : 'No rides have been posted yet.'}</b> Post a ride when you know your route and departure time.</div>}
+        {!loading && visibleRides.length > 0 && <div className="uc-dir-cards">{visibleRides.map(({ ride, state }) => <RideRow key={ride.id} ride={ride} state={state} isJoined={Boolean(joined[ride.id]) || hasMemberToken(ride.id)} canLeave={Boolean(memberAware[ride.id]) || hasMemberToken(ride.id)} ownedCode={posterCodeForRide(rideCodes, rideKey(ride))} onJoin={join} onLeave={leave} onDelete={remove} />)}</div>}
+      </section>
 
-      <div className="community-note"><Info className="h-4 w-4" /><span>Cab Share is a student-created community board, not an official VIT transport booking service. Phone numbers stay private until a rider and the poster mutually confirm; either side can hide their number at any time. Verify the driver and pickup details yourself before travelling.</span></div>
+      <div className="uc-note-row"><Info aria-hidden="true" /><span>Cab Share is a student-created community board, not an official VIT transport booking service. Phone numbers stay private until a rider and the poster mutually confirm; either side can hide their number at any time. Verify the driver and pickup details yourself before travelling.</span></div>
     </div>
   );
 };
@@ -306,20 +320,16 @@ export const PhonePanel: React.FC<{
   const [notice, setNotice] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
 
   if (loading) {
-    return <div className="community-panel"><div className="community-empty"><Loader2 className="spin" /><span>Checking your saved contact number…</span></div></div>;
+    return <section className="uc-plate"><div className="uc-dir-loading"><Loader2 className="spin" aria-hidden="true" /><span>Checking your saved contact number…</span></div></section>;
   }
 
   if (state.phase === 'saved') {
     return (
-      <div className="community-panel phone-panel">
-        <div className="community-panel-heading">
-          <div>
-            <h3><Phone className="h-4 w-4 inline text-emerald-600" /> Contact number saved</h3>
-            <p>Your number on this device: <strong>{maskedPhone(state.last4)}</strong></p>
-          </div>
-        </div>
-        <div className="phone-panel-actions">
-          <label className="phone-hide-toggle">
+      <section className="uc-plate">
+        <div className="uc-plate-head"><span className="uc-cap">Contact number saved</span><Phone className="h-4 w-4" aria-hidden="true" /></div>
+        <div className="uc-dir-detail">
+          <p className="uc-dir-sub">Your number on this device: <b className="uc-num">{maskedPhone(state.last4)}</b></p>
+          <label className="uc-phone-toggle">
             <input
               type="checkbox"
               checked={state.hideNumber}
@@ -333,73 +343,81 @@ export const PhonePanel: React.FC<{
                 }
               }}
             />
-            <EyeOff className="h-4 w-4" /> Hide my number (ride partners see a masked fragment)
+            <EyeOff className="h-4 w-4" aria-hidden="true" /> Hide my number (ride partners see a masked fragment)
           </label>
-          <button
-            className="portal-secondary-button"
-            onClick={async () => {
-              try {
-                const ok = await revokePhone(deviceCode);
-                if (ok) { dispatch({ type: 'REVOKED' }); setNotice({ kind: 'info', text: 'Number removed. Save a new number to post or join rides.' }); }
-              } catch {
-                setNotice({ kind: 'error', text: 'Could not remove the number right now.' });
-              }
-            }}
-          >
-            Change number
-          </button>
+          <div className="uc-dir-form-foot">
+            <button
+              className="uc-dir-go"
+              onClick={async () => {
+                try {
+                  const ok = await revokePhone(deviceCode);
+                  if (ok) { dispatch({ type: 'REVOKED' }); setNotice({ kind: 'info', text: 'Number removed. Save a new number to post or join rides.' }); }
+                } catch {
+                  setNotice({ kind: 'error', text: 'Could not remove the number right now.' });
+                }
+              }}
+            >
+              Change number
+            </button>
+          </div>
+          {notice && <p className="uc-dir-note uc-dir-sub">{notice.text}</p>}
+          <p className="uc-dir-note uc-dir-sub">UltraCC never shows your full number on the board. It is shared only with ride partners after mutual confirmation — or with nobody, if you hide it.</p>
         </div>
-        {notice && <p className={`phone-notice ${notice.kind}`}>{notice.text}</p>}
-        <p className="phone-privacy-note">UltraCC never shows your full number on the board. It is shared only with ride partners after mutual confirmation — or with nobody, if you hide it.</p>
-      </div>
+      </section>
     );
   }
 
   return (
-    <div className="community-panel phone-panel">
-      <div className="community-panel-heading">
-        <div><h3><Phone className="h-4 w-4 inline text-blue-600" /> Your contact number</h3><p>Posting and joining rides require a contact number on this device. Your number stays private.</p></div>
-        <ShieldAlert className="h-5 w-5" />
+    <section className="uc-plate">
+      <div className="uc-plate-head"><span className="uc-cap">Your contact number</span><ShieldAlert className="h-4 w-4" aria-hidden="true" /></div>
+      <div className="uc-dir-detail">
+        <p className="uc-dir-sub">Posting and joining rides require a contact number on this device. Your number stays private.</p>
+        <div className="uc-dir-form">
+          <label className="uc-dir-field">
+            <span>Mobile number</span>
+            <input
+              value={rawPhone}
+              onChange={(e) => setRawPhone(e.target.value)}
+              inputMode="tel"
+              placeholder="98765 43210"
+              aria-label="Mobile number"
+              maxLength={20}
+              className="uc-dir-input uc-num"
+            />
+          </label>
+          <div className="uc-dir-form-foot">
+            <button
+              className="uc-dir-go acc-bg"
+              disabled={busy || !rawPhone.trim()}
+              onClick={async () => {
+                const normalized = normalizeToE164(rawPhone);
+                if (!normalized.ok) { setNotice({ kind: 'error', text: normalized.reason || 'Enter a valid number.' }); return; }
+                setBusy(true); setNotice(null);
+                try {
+                  const identity = await savePhoneIdentity(deviceCode, normalized.e164);
+                  dispatch({ type: 'SAVED', last4: identity.last4 || '', hideNumber: Boolean(identity.hideNumber) });
+                  setRawPhone('');
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : 'Could not save the number.';
+                  if (err instanceof PhoneError && err.code === 'BACKEND_OUTDATED') {
+                    // The panel above explains this properly; keep the inline
+                    // notice short so the fix is read once, not twice.
+                    setNotice({ kind: 'error', text: 'Saving is unavailable right now — the notice above explains why.' });
+                    onBackendOutdated?.();
+                  } else {
+                    setNotice({ kind: 'error', text: message });
+                  }
+                } finally { setBusy(false); }
+              }}
+            >
+              {busy ? 'Saving…' : 'Save number'}
+            </button>
+          </div>
+        </div>
+        {notice && <p className="uc-dir-note uc-dir-sub">{notice.text}</p>}
+        <p className="uc-dir-note uc-dir-sub">Your number is normalized to international format and stored for this device only. It is never displayed publicly and never shared before mutual ride confirmation.</p>
       </div>
-      <div className="phone-code-row">
-        <input
-          value={rawPhone}
-          onChange={(e) => setRawPhone(e.target.value)}
-          inputMode="tel"
-          placeholder="98765 43210"
-          aria-label="Mobile number"
-          maxLength={20}
-        />
-        <button
-          className="portal-primary-button"
-          disabled={busy || !rawPhone.trim()}
-          onClick={async () => {
-            const normalized = normalizeToE164(rawPhone);
-            if (!normalized.ok) { setNotice({ kind: 'error', text: normalized.reason || 'Enter a valid number.' }); return; }
-            setBusy(true); setNotice(null);
-            try {
-              const identity = await savePhoneIdentity(deviceCode, normalized.e164);
-              dispatch({ type: 'SAVED', last4: identity.last4 || '', hideNumber: Boolean(identity.hideNumber) });
-              setRawPhone('');
-            } catch (err) {
-              const message = err instanceof Error ? err.message : 'Could not save the number.';
-              if (err instanceof PhoneError && err.code === 'BACKEND_OUTDATED') {
-                // The panel above explains this properly; keep the inline
-                // notice short so the fix is read once, not twice.
-                setNotice({ kind: 'error', text: 'Saving is unavailable right now — the notice above explains why.' });
-                onBackendOutdated?.();
-              } else {
-                setNotice({ kind: 'error', text: message });
-              }
-            } finally { setBusy(false); }
-          }}
-        >
-          {busy ? 'Saving…' : 'Save number'}
-        </button>
-      </div>
-      {notice && <p className={`phone-notice ${notice.kind}`}>{notice.text}</p>}
-      <p className="phone-privacy-note">Your number is normalized to international format and stored for this device only. It is never displayed publicly and never shared before mutual ride confirmation.</p>
-    </div>
+    </section>
   );
 };
 
@@ -416,6 +434,24 @@ interface RideRowProps {
   onDelete: (ride: CabRide, code: string) => void;
 }
 
+/**
+ * What a poster code is being asked for. The code gates four different
+ * actions, so the ask is data rather than a modal: the row remembers what the
+ * student tapped and runs it once the code is typed.
+ */
+type CodeTask =
+  | { kind: 'riders' }
+  | { kind: 'delete' }
+  | { kind: 'confirm'; memberCode: string }
+  | { kind: 'reveal'; memberCode: string };
+
+const CODE_TASK_COPY: Record<CodeTask['kind'], string> = {
+  riders: 'Open the rider list',
+  delete: 'Delete this ride',
+  confirm: 'Confirm this rider',
+  reveal: 'Show this rider’s number',
+};
+
 function RideRow({ ride, state, isJoined, canLeave, ownedCode, onJoin, onLeave, onDelete }: RideRowProps) {
   const participantCount = getCabParticipantCount(ride);
   // Poster tools: rider confirmation + contact exchange.
@@ -423,87 +459,150 @@ function RideRow({ ride, state, isJoined, canLeave, ownedCode, onJoin, onLeave, 
   const [reveal, setReveal] = useState<{ code: string; result: ContactReveal } | null>(null);
   // Rider tools: reveal the poster's number after confirmation.
   const [posterContact, setPosterContact] = useState<ContactReveal | null>(null);
+  // The pending poster-only action, and the code typed for it.
+  const [task, setTask] = useState<CodeTask | null>(null);
+  const [typedCode, setTypedCode] = useState('');
 
-  /**
-   * This device's own rides need no typing — the stored code is used. For any
-   * other ride the manual prompt stays, so a student who posted from another
-   * phone and saved the code can still act on it.
-   */
-  const resolveCode = (promptText: string): string | null => {
-    if (ownedCode) return ownedCode;
-    const typed = window.prompt(promptText);
-    return typed?.trim() || null;
-  };
-
-  const openPosterTools = async () => {
-    const code = resolveCode('Enter YOUR poster code to manage riders:');
-    if (!code) return;
+  const runTask = async (action: CodeTask, code: string) => {
+    if (action.kind === 'riders') {
+      try {
+        const list = await listRideMembers(ride.id, code);
+        if (!list) {
+          showToast({ title: 'Wrong poster code', message: 'That ride is not yours to manage. The code is the one shown when you posted it.', type: 'warning' });
+          return;
+        }
+        setMembers(list);
+      } catch {
+        showToast({ title: 'Rider list not loaded', message: 'Try again in a moment.', type: 'error' });
+      }
+      return;
+    }
+    if (action.kind === 'delete') {
+      onDelete(ride, code);
+      return;
+    }
+    if (action.kind === 'confirm') {
+      try {
+        const ok = await confirmRideMember(ride.id, code, action.memberCode);
+        if (ok)
+          setMembers((current) => current
+            ? current.map((x) => (x.memberCode === action.memberCode ? { ...x, posterConfirmed: true } : x))
+            : current);
+        else
+          showToast({ title: 'Wrong poster code', message: 'The rider is still waiting for confirmation.', type: 'warning' });
+      } catch {
+        showToast({ title: 'Could not confirm that rider', message: 'Try again in a moment.', type: 'error' });
+      }
+      return;
+    }
     try {
-      const list = await listRideMembers(ride.id, code);
-      if (!list) { window.alert('Wrong poster code — this ride is not yours to manage.'); return; }
-      setMembers(list);
+      const result = await revealMemberContact(ride.id, code, action.memberCode);
+      setReveal({ code: action.memberCode, result });
     } catch {
-      window.alert('Could not load the rider list right now.');
+      showToast({ title: 'Number not available', message: 'Try again in a moment.', type: 'error' });
     }
   };
 
-  return <article className={`ride-row ${state}`}>
-    <div className="ride-route"><span className="ride-state-badge">{state === 'expired' ? 'Expired' : state === 'full' ? 'Full' : 'Open'}</span><strong>{ride.from_place}</strong><span className="ride-arrow">→</span><strong>{ride.to_place}</strong></div>
-    <div className="ride-meta"><span><Clock /> {ride.travel_date} · {ride.travel_time}</span><span><Users /> {participantCount}/{ride.seats} joined</span>{ownedCode && <span className="ride-expiry">posted on this device</span>}</div>
-    {ride.notes && <p className="ride-notes">{ride.notes}</p>}
-    {ride.contact && <p className="ride-contact">Contact: {ride.contact}</p>}
-    <div className="ride-actions">
-      {state === 'open' && (isJoined ? (canLeave ? <button onClick={() => onLeave(ride.id)} className="portal-secondary-button"><LogOut /> Leave ride</button> : <span className="ride-expiry">Joined · leave unavailable on this server</span>) : <button onClick={() => onJoin(ride.id)} className="portal-primary-button"><Users /> Join ride</button>)}
-      {state === 'expired' && <span className="ride-expiry">This departure time has passed.</span>}
-      <button onClick={openPosterTools} className="ride-delete" title="Confirm riders / exchange contacts (poster)"><UserCheck /> Riders</button>
-      <button onClick={() => { const code = resolveCode('Enter the poster code to delete this ride:'); if (code) onDelete(ride, code); }} className="ride-delete"><Trash2 /> Delete</button>
+  /**
+   * This device's own rides need no typing — the stored code is used. For any
+   * other ride the code is asked for in the row itself. It used to be
+   * `window.prompt`, which iOS silently answers with null in a home-screen
+   * PWA: four buttons on every ride did nothing at all on the phone most
+   * students use.
+   */
+  const request = (action: CodeTask) => {
+    if (ownedCode) { void runTask(action, ownedCode); return; }
+    setTypedCode('');
+    setTask(action);
+  };
+
+  const submitCode = (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = typedCode.trim();
+    if (!code || !task) return;
+    const action = task;
+    setTask(null);
+    setTypedCode('');
+    void runTask(action, code);
+  };
+
+  const stateTag = state === 'expired' ? 'uc-dir-tag' : state === 'full' ? 'uc-dir-tag is-warn' : 'uc-dir-tag is-good';
+
+  return <article className="uc-dir-card">
+    <div className="uc-dir-card-top">
+      <div className="uc-dir-main">
+        <h3 className="uc-dir-title">{ride.from_place} → {ride.to_place}</h3>
+        <div className="uc-dir-tags">
+          <span className="uc-dir-tag"><Clock aria-hidden="true" /> <span className="uc-num">{ride.travel_date} · {ride.travel_time}</span></span>
+          <span className="uc-dir-tag"><Users aria-hidden="true" /> <span className="uc-num">{participantCount}/{ride.seats}</span> joined</span>
+          {ownedCode && <span className="uc-dir-tag is-live">posted on this device</span>}
+        </div>
+      </div>
+      <span className={stateTag}>{state === 'expired' ? 'Expired' : state === 'full' ? 'Full' : 'Open'}</span>
     </div>
+    {ride.notes && <p className="uc-dir-sub">{ride.notes}</p>}
+    {ride.contact && <p className="uc-dir-sub">Contact: <span className="uc-num">{ride.contact}</span></p>}
+    <div className="uc-dir-card-foot">
+      <div className="uc-dir-acts">
+        {state === 'open' && (isJoined ? (canLeave ? <button onClick={() => onLeave(ride.id)} className="uc-dir-go"><LogOut className="h-3.5 w-3.5" aria-hidden="true" /> Leave ride</button> : <span className="uc-dir-sub">Joined · leave unavailable on this server</span>) : <button onClick={() => onJoin(ride.id)} className="uc-dir-go acc-bg"><Users className="h-3.5 w-3.5" aria-hidden="true" /> Join ride</button>)}
+        {state === 'expired' && <span className="uc-dir-sub">This departure time has passed.</span>}
+        <button onClick={() => request({ kind: 'riders' })} className="uc-dir-go" title="Confirm riders / exchange contacts (poster)"><UserCheck className="h-3.5 w-3.5" aria-hidden="true" /> Riders</button>
+        <button onClick={() => request({ kind: 'delete' })} className="uc-dir-go"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Delete</button>
+      </div>
+    </div>
+    {task && (
+      <form className="uc-ride-code" onSubmit={submitCode}>
+        <label className="uc-dir-field">
+          <span>Your poster code</span>
+          <input
+            autoFocus
+            value={typedCode}
+            onChange={(e) => setTypedCode(e.target.value)}
+            placeholder="Code shown when you posted this ride"
+            aria-label="Poster code"
+            className="uc-dir-input uc-num"
+          />
+        </label>
+        <p className="uc-dir-sub">Only the person who posted this ride has the code. {CODE_TASK_COPY[task.kind]}.</p>
+        <div className="uc-dir-form-foot">
+          <button type="submit" className="uc-dir-go acc-bg" disabled={!typedCode.trim()}>Continue</button>
+          <button type="button" className="uc-dir-go" onClick={() => setTask(null)}>Cancel</button>
+        </div>
+      </form>
+    )}
     {isJoined && (
-      <div className="ride-contact-exchange">
+      <div className="uc-ride-members">
         <button
-          className="portal-secondary-button"            onClick={async () => {
-              const myCode = memberToken(ride.id);
-              try {
-                const result = await revealMemberContact(ride.id, myCode, myCode);
-                setPosterContact(result);
-              } catch {
-                setPosterContact({ status: 'unavailable' });
-              }
-            }}
+          className="uc-dir-go"
+          onClick={async () => {
+            const myCode = memberToken(ride.id);
+            try {
+              const result = await revealMemberContact(ride.id, myCode, myCode);
+              setPosterContact(result);
+            } catch {
+              setPosterContact({ status: 'unavailable' });
+            }
+          }}
         >
-          <MessageCircle className="h-4 w-4" /> Ride contact
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> Ride contact
         </button>
         {posterContact && (
           <ContactStatusLine
             result={posterContact}
-            onConfirmRequest={() => window.alert('The poster has not confirmed your seat yet. Ask them to open "Riders" and confirm you — then contact details unlock for both sides.')}
+            onConfirmRequest={() => showToast({ title: 'Waiting on the poster', message: 'They confirm riders from the "Riders" button on this ride. Once confirmed, both numbers unlock.', type: 'info', duration: 6000 })}
           />
         )}
       </div>
     )}
-    {members && members.length === 0 && <p className="ride-notes">No riders have joined yet.</p>}
+    {members && members.length === 0 && <p className="uc-dir-sub">No riders have joined yet.</p>}
     {members && members.length > 0 && (
-      <div className="ride-member-list">
+      <div className="uc-ride-members">
         {members.map((m) => (
-          <div key={m.memberCode} className="ride-member-row">
-            <span>{m.last4 ? `rider •••• ${m.last4}` : 'rider'}{m.posterConfirmed ? ' · confirmed' : ''}</span>
-            <span className="ride-member-actions">
-              {!m.posterConfirmed && <button onClick={async () => {
-                const code = resolveCode('Enter YOUR poster code to confirm this rider:');
-                if (!code) return;
-                try {
-                  const ok = await confirmRideMember(ride.id, code, m.memberCode);
-                  if (ok) setMembers((current) => current ? current.map((x) => x.memberCode === m.memberCode ? { ...x, posterConfirmed: true } : x) : current);
-                } catch { window.alert('Could not confirm that rider.'); }
-              }} className="portal-secondary-button"><UserCheck className="h-3.5 w-3.5" /> Confirm</button>}
-              {m.posterConfirmed && <button onClick={async () => {
-                const code = resolveCode("Enter YOUR poster code to reveal this rider's number:");
-                if (!code) return;
-                try {
-                  const result = await revealMemberContact(ride.id, code, m.memberCode);
-                  setReveal({ code: m.memberCode, result });
-                } catch { window.alert('Could not fetch the contact.'); }
-              }} className="portal-secondary-button"><MessageCircle className="h-3.5 w-3.5" /> Contact</button>}
+          <div key={m.memberCode} className="uc-ride-member">
+            <span className="uc-num">{m.last4 ? `rider •••• ${m.last4}` : 'rider'}{m.posterConfirmed ? ' · confirmed' : ''}</span>
+            <span className="uc-dir-acts">
+              {!m.posterConfirmed && <button onClick={() => request({ kind: 'confirm', memberCode: m.memberCode })} className="uc-dir-go"><UserCheck className="h-3.5 w-3.5" aria-hidden="true" /> Confirm</button>}
+              {m.posterConfirmed && <button onClick={() => request({ kind: 'reveal', memberCode: m.memberCode })} className="uc-dir-go"><MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> Contact</button>}
             </span>
           </div>
         ))}
@@ -514,15 +613,13 @@ function RideRow({ ride, state, isJoined, canLeave, ownedCode, onJoin, onLeave, 
 }
 
 export function ContactStatusLine({ result, onConfirmRequest }: { result: ContactReveal; onConfirmRequest: () => void }) {
-  if (result.status === 'ok') return <p className="ride-contact">Ride partner: <a href={`tel:${result.phone}`}>{result.phone}</a></p>;
-  if (result.status === 'hidden') return <p className="ride-contact">Number hidden by your ride partner — {result.masked}</p>;
+  if (result.status === 'ok') return <p className="uc-dir-sub">Ride partner: <a href={`tel:${result.phone}`} className="uc-num">{result.phone}</a></p>;
+  if (result.status === 'hidden') return <p className="uc-dir-sub">Number hidden by your ride partner — <span className="uc-num">{result.masked}</span></p>;
   if (result.status === 'awaiting_confirmation' || result.status === 'needs_confirmation') {
-    return <p className="ride-contact">Contact unlocks after mutual confirmation. <button className="ride-inline-link" onClick={onConfirmRequest}>How it works</button></p>;
+    return <p className="uc-dir-sub">Contact unlocks after mutual confirmation. <button className="uc-dir-inline-link" onClick={onConfirmRequest}>How it works</button></p>;
   }
-  if (result.status === 'unavailable' || result.status === 'not_found') return <p className="ride-contact">Ride partner has no contact number available.</p>;
-  return <p className="ride-contact">Contact details are not available.</p>;
+  if (result.status === 'unavailable' || result.status === 'not_found') return <p className="uc-dir-sub">Ride partner has no contact number available.</p>;
+  return <p className="uc-dir-sub">Contact details are not available.</p>;
 }
 
-function Stat({ label, value }: { label: string; value: string }) { return <div className="community-stat"><span>{label}</span><strong>{value}</strong></div>; }
-
-function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) { return <label className={`community-field ${wide ? 'wide' : ''}`}><span>{label}</span>{children}</label>; }
+function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) { return <label className={`uc-dir-field${wide ? ' uc-dir-field--wide' : ''}`}><span>{label}</span>{children}</label>; }

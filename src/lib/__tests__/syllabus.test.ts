@@ -21,7 +21,6 @@ import { resolve } from 'node:path';
 import {
   coursesFromTimetable,
   describeAbsence,
-  formatSyllabusSize,
   IDLE,
   isCachedSyllabusUsable,
   LOADING,
@@ -387,14 +386,5 @@ describe('syllabusCacheKey — the cache cannot cross students or terms', () => 
   it('marks an unknown student or term instead of colliding them', () => {
     expect(syllabusCacheKey({ registrationNo: '', semesterId: '', courseCode: 'CSE2009' }))
       .toBe('unknown|unknown|CSE2009|');
-  });
-});
-
-describe('formatSyllabusSize', () => {
-  it('reads as a size, not a byte count', () => {
-    expect(formatSyllabusSize(512)).toBe('512 B');
-    expect(formatSyllabusSize(2048)).toBe('2 KB');
-    expect(formatSyllabusSize(1_500_000)).toBe('1.4 MB');
-    expect(formatSyllabusSize(0)).toBe('');
   });
 });

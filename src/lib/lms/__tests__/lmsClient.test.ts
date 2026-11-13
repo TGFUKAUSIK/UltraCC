@@ -7,6 +7,6 @@ describe('LMS username handling', () => {
   });
 
   it('does not derive a Moodle email from a VTOP registration number', () => {
-    expect(lmsUsernameFromRegNo('25BEE1303')).toBe('25BEE1303');
+    expect(lmsUsernameFromRegNo('25BEE0001')).toBe('25BEE0001');
   });
 });

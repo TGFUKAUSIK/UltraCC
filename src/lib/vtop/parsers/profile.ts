@@ -76,7 +76,7 @@ export function parseStudentProfileHtml(htmlString: string, withOutcome?: true) 
   if (!regNo) regNo = valueForLabel([/^(Reg(?:istration)?(?: No\.?| Number)?|Register No\.?)$/i]);
 
   // Hard validation: without a registration number the page is not a profile.
-  // VIT reg numbers: 23BCE1082 (2-digit year + 2-3 letter program + 4 digits).
+  // VIT reg numbers: 23BCE0000 (2-digit year + 2-3 letter program + 4 digits).
   if (!/^\d{2}[A-Z]{2,3}\d{4}$/.test(regNo || '')) {
     warnings.push({
       code: 'no-valid-regno',

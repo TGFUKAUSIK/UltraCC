@@ -94,7 +94,11 @@ describe('buildAttendanceImageDoc', () => {
   it('computes overall percentage in the subtitle', () => {
     const doc = buildAttendanceImageDoc([attRow({ attended: 30, total: 40 }), attRow({ attended: 10, total: 20 })]);
     const texts = doc.commands.filter((c) => c.kind === 'text').map((c) => (c as { text: string }).text);
-    expect(texts.some((t) => t.includes('Overall 67%'))).toBe(true);
+    // 40 of 60 is 66.66…%, and the header prints it truncated to one decimal —
+    // the same figure the app shows. Rounding here used to put "Overall 67%"
+    // above rows the app calls 66.6%, and a round-up could push a 74.9% sheet
+    // onto the 75% line its own colour says is unmet.
+    expect(texts.some((t) => t.includes('Overall 66.6%'))).toBe(true);
   });
 });
 

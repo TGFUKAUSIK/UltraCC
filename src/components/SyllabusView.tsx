@@ -1,6 +1,8 @@
 /**
  * SyllabusView — the Syllabus tab: this semester's courses, one tap from VTOP's
- * own syllabus file.
+ * own syllabus file. Presented as a document library: a term mast, then one
+ * hair-lined ledger row per course — its code, its name, and the single action
+ * that opens the paper.
  *
  * WHERE EVERYTHING ON THIS PAGE COMES FROM:
  *  - The course list is the student's own synced timetable for the selected
@@ -30,14 +32,15 @@ import { BookOpen, Download, ExternalLink, FileText, GraduationCap, Loader2, Ref
 import type { SyllabusDocument, TimetableSlot } from '../lib/vtop/types';
 import { getLiveClient, isLiveSessionActive } from '../lib/vtop/liveSession';
 import { useLiveSessionActive } from '../lib/vtop/useLiveSession';
+import { useDialog } from '../hooks/useDialog';
 import {
   coursesFromTimetable,
-  formatSyllabusSize,
   IDLE,
   LOADING,
   type SyllabusCourse,
   type SyllabusStatus,
 } from '../lib/syllabus';
+import { formatFileSize } from '../utils/fileSize';
 import { loadCourseSyllabus } from '../lib/syllabusStore';
 import { vtopDb } from '../lib/db/vtopDatabase';
 
@@ -162,47 +165,41 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({
   const coursesLabel = `${courses.length} ${courses.length === 1 ? 'course' : 'courses'}`;
 
   return (
-    <div className="space-y-4 pb-12 min-w-0">
-      {/* Hero */}
-      <div className="bg-white border border-cyan-500/20 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex items-center space-x-3 relative z-10 min-w-0">
-          <div className="p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-600 shrink-0">
-            <FileText className="h-6 w-6" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-xl font-extrabold text-zinc-900 tracking-tight">Syllabus</h2>
-            <p className="text-xs text-zinc-500 font-medium">
+    <div className="uc-syl-view pb-12 min-w-0">
+      {/* Mast — the term this library belongs to, and how many papers it holds. */}
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">Syllabus</span>
+            <h2 className="uc-dir-name">Papers for this term</h2>
+            <p className="uc-note">
               {semesterLabel ? `${semesterLabel} · ` : ''}{coursesLabel}
             </p>
           </div>
         </div>
-      </div>
+      </section>
 
       {!courses.length ? (
-        <div className="bg-white border border-zinc-200 rounded-3xl p-8 text-center shadow-xl">
-          <GraduationCap className="h-10 w-10 text-zinc-400 mx-auto mb-3" aria-hidden="true" />
-          <p className="text-sm font-bold text-zinc-900">No courses to show yet</p>
-          <p className="text-xs text-zinc-500 mt-1">
-            Sync your VTOP data and this semester’s courses appear here, each with its own syllabus.
-          </p>
-        </div>
-      ) : (
-        <>
-          <p className="text-xs text-zinc-500 font-medium px-1">
-            Select a course to view its syllabus.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {courses.map((c) => (
-              <CourseCard
-                key={c.courseCode}
-                course={c}
-                status={statuses[c.courseCode] ?? IDLE}
-                onOpen={() => openSyllabus(c)}
-              />
-            ))}
+        <section className="uc-plate">
+          <div className="uc-syl-blank">
+            <GraduationCap className="h-8 w-8" aria-hidden="true" />
+            <b>No courses to show yet</b>
+            <small>
+              Sync your VTOP data and this semester’s courses appear here, each with its own syllabus.
+            </small>
           </div>
-        </>
+        </section>
+      ) : (
+        <section className="uc-plate uc-dir-ledger" aria-label="Courses">
+          {courses.map((c) => (
+            <CourseRow
+              key={c.courseCode}
+              course={c}
+              status={statuses[c.courseCode] ?? IDLE}
+              onOpen={() => openSyllabus(c)}
+            />
+          ))}
+        </section>
       )}
 
       {openCourse && (
@@ -221,17 +218,17 @@ export const SyllabusView: React.FC<SyllabusViewProps> = ({
 };
 
 // ---------------------------------------------------------------------------
-// Course card — a code, a name and the one thing to do with them
+// Course row — a code, a name and the one thing to do with them
 // ---------------------------------------------------------------------------
 
-const CourseCard: React.FC<{
+const CourseRow: React.FC<{
   course: SyllabusCourse;
   status: SyllabusStatus;
   onOpen: () => void;
 }> = ({ course, status, onOpen }) => {
   /**
-   * "Try again" only ever follows a real failure: an idle card asks, a card
-   * VTOP answered shows, and a card that failed offers the retry.
+   * "Try again" only ever follows a real failure: an idle row asks, a row VTOP
+   * answered shows, and a row that failed offers the retry.
    */
   const label = {
     idle: 'Syllabus',
@@ -245,29 +242,33 @@ const CourseCard: React.FC<{
     error: 'Try again',
   }[status.kind];
 
+  const busy = status.kind === 'loading';
+  const failed = status.kind === 'error' || status.kind === 'parse-failed' || status.kind === 'unavailable';
+
   return (
-    <div className="bg-white border border-zinc-200 rounded-3xl p-4 sm:p-5 shadow-xl min-w-0 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-sm font-extrabold text-zinc-900 font-mono">{course.courseCode}</p>
-        <p className="text-xs text-zinc-600 font-semibold mt-0.5 break-words">
-          {course.courseTitle || '—'}
-        </p>
+    <article className="uc-dir-row uc-dir-row--acts">
+      <span className="uc-dir-tile" aria-hidden="true">
+        <FileText className="h-4 w-4" />
+      </span>
+      <div className="uc-dir-main">
+        <b className="uc-dir-title uc-num uc-syl-code">{course.courseCode}</b>
+        <span className="uc-syl-name">{course.courseTitle || '—'}</span>
       </div>
       <button
         type="button"
         onClick={onOpen}
-        disabled={status.kind === 'loading'}
+        disabled={busy}
         aria-label={`${label} — ${course.courseCode}`}
-        className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-xl bg-zinc-900 hover:bg-zinc-700 disabled:opacity-50 text-white text-[11px] font-bold transition cursor-pointer"
+        className="uc-syl-go"
       >
-        {status.kind === 'loading'
+        {busy
           ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          : status.kind === 'error' || status.kind === 'parse-failed' || status.kind === 'unavailable'
+          : failed
             ? <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
             : <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />}
         {label}
       </button>
-    </div>
+    </article>
   );
 };
 
@@ -286,11 +287,9 @@ export const SyllabusSheet: React.FC<{
   onClose: () => void;
 }> = ({ course, status, note, onLogin, onRetry, onRecheck, onClose }) => {
   const titleId = 'syllabus-sheet-title';
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Escape closes, Tab stays inside the sheet, and focus returns to the course
+  // row it was opened from.
+  const sheetRef = useDialog<HTMLDivElement>({ isOpen: true, onClose });
 
   const doc = status.kind === 'ready' ? status.document : null;
   /**
@@ -303,21 +302,22 @@ export const SyllabusSheet: React.FC<{
 
   return (
     <div
+      ref={sheetRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
-      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-zinc-900/60 p-0 sm:p-6"
+      className="uc-overlay fixed inset-0 z-[70]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white w-full sm:max-w-4xl max-h-[92dvh] sm:max-h-[88vh] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col min-w-0 overflow-hidden">
-        <header className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-zinc-100 shrink-0">
+      <div className="uc-syl-panel">
+        <header className="uc-syl-head">
           <div className="min-w-0">
-            <h3 id={titleId} className="text-sm font-extrabold text-zinc-900 truncate">
+            <h3 id={titleId} className="uc-syl-title">
               {course.courseCode} — Syllabus
             </h3>
-            <p className="text-[11px] text-zinc-500 mt-0.5 break-words">
+            <p className="uc-syl-sub">
               {doc
-                ? <>VTOP’s own file · {doc.fileName} · {formatSyllabusSize(doc.bytes)}{status.kind === 'ready' && status.cached ? ' · saved on this device' : ''}</>
+                ? <>VTOP’s own file · {doc.fileName}{doc.bytes > 0 ? ` · ${formatFileSize(doc.bytes)}` : ''}{status.kind === 'ready' && status.cached ? ' · saved on this device' : ''}</>
                 : 'Fetching this course’s syllabus from VTOP.'}
             </p>
           </div>
@@ -325,23 +325,23 @@ export const SyllabusSheet: React.FC<{
             type="button"
             onClick={onClose}
             aria-label="Close syllabus"
-            className="shrink-0 inline-flex items-center justify-center h-11 w-11 rounded-xl border border-zinc-200 text-zinc-500 hover:bg-zinc-50 transition cursor-pointer"
+            className="uc-syl-close"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5" aria-live="polite">
+        <div className="uc-syl-body" aria-live="polite">
           {otherTerm && (
-            <p className="mb-3 text-[11px] text-amber-700">
+            <p className="uc-syl-term">
               VTOP answered for {otherTerm.label} — this document belongs to that term.
             </p>
           )}
 
           {status.kind === 'loading' && (
-            <div className="h-64 flex flex-col items-center justify-center gap-3 text-zinc-500">
+            <div className="uc-syl-wait">
               <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
-              <p className="text-xs font-bold">Fetching syllabus…</p>
+              <p>Fetching syllabus…</p>
             </div>
           )}
 
@@ -362,9 +362,9 @@ export const SyllabusSheet: React.FC<{
           )}
 
           {doc && (
-            <div className="space-y-3">
+            <div className="uc-syl-docwrap">
               <DocumentFrame document={doc} />
-              <p className="text-[10px] text-zinc-400">
+              <p className="uc-syl-fine">
                 Page navigation and zoom are VTOP’s file in your browser’s own document viewer.
                 {note ? ` ${note}` : ''}
               </p>
@@ -373,26 +373,26 @@ export const SyllabusSheet: React.FC<{
         </div>
 
         {doc && (
-          <footer className="shrink-0 border-t border-zinc-100 p-3 sm:p-4 flex flex-wrap items-center gap-2">
+          <footer className="uc-syl-foot">
             <a
               href={doc.dataUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-xl bg-zinc-900 text-white text-[11px] font-bold hover:bg-zinc-700 transition"
+              className="uc-syl-act acc-bg"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Open paper
             </a>
             <a
               href={doc.dataUrl}
               download={doc.fileName}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-xl border border-zinc-200 text-zinc-700 text-[11px] font-bold hover:bg-zinc-50 transition"
+              className="uc-syl-act uc-syl-act--ghost"
             >
               <Download className="h-3.5 w-3.5" aria-hidden="true" /> Download
             </a>
             <button
               type="button"
               onClick={onRecheck}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-xl border border-zinc-200 text-zinc-600 text-[11px] font-bold hover:bg-zinc-50 transition cursor-pointer"
+              className="uc-syl-act uc-syl-act--ghost"
             >
               <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Re-check with VTOP
             </button>
@@ -418,17 +418,17 @@ const DocumentFrame: React.FC<{ document: SyllabusDocument }> = ({ document }) =
       <img
         src={document.dataUrl}
         alt="Course syllabus as published by VTOP"
-        className="w-full h-auto max-h-[70vh] object-contain rounded-2xl border border-zinc-200 bg-zinc-50"
+        className="uc-syl-doc uc-syl-doc--img"
       />
     );
   }
   if (!isPdf) {
     return (
-      <div className="bg-white border border-zinc-200 rounded-3xl p-5 shadow-xl flex items-start gap-3 text-zinc-600">
-        <FileText className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+      <div className="uc-note-row uc-syl-notpdf">
+        <FileText className="h-4 w-4" aria-hidden="true" />
         <div className="min-w-0">
-          <p className="text-sm font-extrabold text-zinc-900">VTOP’s file is not a PDF</p>
-          <p className="text-xs mt-0.5 break-words">
+          <p className="uc-syl-notpdf-title">VTOP’s file is not a PDF</p>
+          <p className="uc-syl-notpdf-text">
             This course’s syllabus is a {document.fileName.split('.').pop()?.toUpperCase() || 'document'} file,
             which browsers cannot display inside a page. Use “Open paper” to view it in the app your device already has.
           </p>
@@ -440,7 +440,7 @@ const DocumentFrame: React.FC<{ document: SyllabusDocument }> = ({ document }) =
     <iframe
       title="Course syllabus from VTOP"
       src={document.dataUrl}
-      className="w-full h-[62vh] sm:h-[70vh] rounded-2xl border border-zinc-200 bg-zinc-50"
+      className="uc-syl-doc"
     />
   );
 };
@@ -454,13 +454,13 @@ function SheetOutcome({ message, action }: {
   action: { label: string; onClick: () => void };
 }) {
   return (
-    <div className="h-64 flex flex-col items-center justify-center gap-3 text-center px-4">
-      <FileText className="h-6 w-6 text-zinc-400" aria-hidden="true" />
-      <p className="text-sm font-bold text-zinc-800 max-w-sm break-words">{message}</p>
+    <div className="uc-syl-outcome">
+      <FileText className="h-6 w-6" aria-hidden="true" />
+      <p className="uc-syl-outcome-msg">{message}</p>
       <button
         type="button"
         onClick={action.onClick}
-        className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] rounded-xl bg-zinc-900 hover:bg-zinc-700 text-white text-[11px] font-bold transition cursor-pointer"
+        className="uc-syl-act acc-bg"
       >
         <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> {action.label}
       </button>

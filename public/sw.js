@@ -9,7 +9,11 @@
  *   - Cached VTOP data lives in IndexedDB, not the SW cache.
  */
 
-const CACHE_NAME = 'ultracc-shell-v5';
+// Bump this whenever the shell's CSS/JS changes shape. On activate every other
+// cache is deleted, so an installed PWA drops the old stylesheet and fetches the
+// new build. Keep it numerically in step with the `?ultracc-portal-vN` query in
+// src/main.tsx (guarded by src/lib/__tests__/serviceWorkerCache.test.ts).
+const CACHE_NAME = 'ultracc-shell-v32';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -211,6 +215,20 @@ self.addEventListener('fetch', (event) => {
 
   // Never cache API or gateway requests.
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/supabase/')) {
+    return;
+  }
+
+  // Never touch dev-server modules. Vite serves the app's source modules and
+  // the stylesheet on the fly, and their URLs end in .css/.tsx exactly like
+  // production assets — so without this the cache-first branch below would pin
+  // the first copy it saw and make every edit invisible until the cache was
+  // cleared by hand. The app also skips registration in dev; this covers an
+  // already-installed one.
+  if (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/')
+  ) {
     return;
   }
 

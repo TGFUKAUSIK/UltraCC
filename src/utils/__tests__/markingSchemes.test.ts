@@ -13,7 +13,7 @@ import {
   courseKind,
   resolveMarkingScheme,
   curriculumAwareTotal,
-  evaluatedInternalWeight,
+  evaluatedWeight,
   schemeLabelFor,
   theoryScheme,
   labScheme,
@@ -32,7 +32,7 @@ function theoryMarks(overrides: Partial<CourseMarks> = {}): CourseMarks {
     da2: { scored: 7, max: 10, weightage: 5 },
     da3: { scored: 0, max: 0, weightage: 0 },
     quiz: { scored: 9, max: 10, weightage: 10 },
-    fat: { scored: 0, max: 100, weightage: 40 },
+    fat: { scored: 0, max: 100, weightage: 40, status: 'Pending' },
     extraComponents: [],
     totalScoredSoFar: 37.8,
     currentEstimatedGrade: '',
@@ -50,7 +50,7 @@ function labMarks(overrides: Partial<CourseMarks> = {}): CourseMarks {
     da2: { scored: 0, max: 0, weightage: 0 },
     da3: { scored: 0, max: 0, weightage: 0 },
     quiz: { scored: 0, max: 0, weightage: 0 },
-    fat: { scored: 0, max: 100, weightage: 40 },
+    fat: { scored: 0, max: 100, weightage: 40, status: 'Pending' },
     extraComponents: [
       { title: 'Experiment 1', scored: 90, max: 100, weightage: 15, status: 'Evaluated' },
       { title: 'Experiment 2', scored: 80, max: 100, weightage: 15, status: 'Evaluated' },
@@ -141,8 +141,12 @@ describe('curriculumAwareTotal', () => {
 
   it('lab: adds evaluated lab FAT weight when the final assessment is graded', () => {
     // 36 from experiments + 80/100 * 40 = 32 → 68.
-    const withFat = labMarks({ fat: { scored: 80, max: 100, weightage: 40 } });
+    const withFat = labMarks({ fat: { scored: 80, max: 100, weightage: 40, status: 'Evaluated' } });
     expect(curriculumAwareTotal(withFat)).toBeCloseTo(68, 2);
+    // The same 40 joins the denominator, so 68/85 is the pace: 80%. It used to
+    // read 68/45 = 151%, which the health card then clamped to a perfect 100.
+    expect(evaluatedWeight(withFat)).toBe(85);
+    expect(68 / 85 * 100).toBeCloseTo(80, 6);
   });
 
   it('project: reviews + project FAT by observed weights', () => {
@@ -203,26 +207,26 @@ describe('curriculumAwareTotal', () => {
   });
 });
 
-describe('evaluatedInternalWeight', () => {
-  it('sums only the internal weight VTOP has actually graded', () => {
-    // CAT 15+15 + DA 5+5 + Quiz 10 = 50; the ungraded FAT is excluded.
-    expect(evaluatedInternalWeight(theoryMarks())).toBe(50);
+describe('evaluatedWeight', () => {
+  it('sums the weight of exactly the rows VTOP has graded', () => {
+    // CAT 15+15 + DA 5+5 + Quiz 10 = 50; the pending FAT is on neither side.
+    expect(evaluatedWeight(theoryMarks())).toBe(50);
   });
 
   it('counts a third DA only when VTOP declares its weightage', () => {
     // No DA 3 row → the template must not inflate the denominator past 50.
-    expect(evaluatedInternalWeight(theoryMarks())).toBe(50);
+    expect(evaluatedWeight(theoryMarks())).toBe(50);
     const withDA3 = theoryMarks({ da3: { scored: 6, max: 10, weightage: 10 } });
-    expect(evaluatedInternalWeight(withDA3)).toBe(60);
+    expect(evaluatedWeight(withDA3)).toBe(60);
   });
 
   it('keeps lab pace on the graded experiment weight only', () => {
     // Exp 1–3 graded at 15 each = 45; pending Exp 4 (15) and the FAT are out.
-    expect(evaluatedInternalWeight(labMarks())).toBe(45);
+    expect(evaluatedWeight(labMarks())).toBe(45);
   });
 
-  it('returns null when nothing internal has been graded', () => {
-    expect(evaluatedInternalWeight(theoryMarks({
+  it('returns null when nothing has been graded', () => {
+    expect(evaluatedWeight(theoryMarks({
       cat1: { scored: 0, max: 0, weightage: 15 },
       cat2: { scored: 0, max: 0, weightage: 15 },
       da1: { scored: 0, max: 0, weightage: 5 },
@@ -230,6 +234,22 @@ describe('evaluatedInternalWeight', () => {
       quiz: { scored: 0, max: 0, weightage: 10 },
       fat: { scored: 0, max: 0, weightage: 40 },
     }))).toBeNull();
+  });
+
+  it('never lets the numerator outrun its own denominator', () => {
+    // Every course the model can describe must give a pace out of the weight it
+    // actually earned marks on — otherwise a screen divides by one rule and
+    // multiplies by another and the student reads a made-up percentage.
+    const gradedFat = theoryMarks({ fat: { scored: 60, max: 100, weightage: 40, status: 'Evaluated' } });
+    expect(evaluatedWeight(gradedFat)).toBe(90);          // 50 internals + the FAT's own 40
+    expect(curriculumAwareTotal(gradedFat)).toBeCloseTo(61.5, 2); // 37.5 + 60/100*40
+    const cases = [theoryMarks(), labMarks(), labMarks({ fat: { scored: 80, max: 100, weightage: 40, status: 'Evaluated' } }), gradedFat];
+    for (const marks of cases) {
+      const earned = curriculumAwareTotal(marks);
+      const weight = evaluatedWeight(marks);
+      if (earned === null || weight === null) continue;
+      expect(earned / weight, `pace over ${marks.courseCode}`).toBeLessThanOrEqual(1);
+    }
   });
 });
 

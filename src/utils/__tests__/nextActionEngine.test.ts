@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { calculateBunkStats, calculateNextAction } from '../nextActionEngine';
-import { AttendanceRecord, TimetableSlot, ExamSchedule } from '../../types';
+import { calculateBunkStats } from '../nextActionEngine';
+import { VTOP_ATTENDANCE_FLOOR } from '../attendanceBands';
+import { AttendanceRecord } from '../../types';
 
 describe('calculateBunkStats', () => {
   it('computes safe bunks above the threshold', () => {
@@ -13,77 +14,113 @@ describe('calculateBunkStats', () => {
 
   it('computes classes that must be attended below the threshold', () => {
     const stats = calculateBunkStats({ attended: 20, totalHeld: 28, percentage: 71.4 } as AttendanceRecord, 75);
-    expect(stats.status).toBe('Debarred Risk');
+    expect(stats.state).toBe('debar-risk');
     expect(stats.safeToBunk).toBe(false);
     // (20 + x) / (28 + x) = 0.75 -> x = 4
     expect(stats.mustAttend).toBe(4);
   });
 
-  it('reports borderline when no bunks are safe', () => {
+  it('reports no safe bunks left with a sentence, not a shout', () => {
     const stats = calculateBunkStats({ attended: 24, totalHeld: 32, percentage: 75 } as AttendanceRecord, 75);
     expect(stats.canBunk).toBe(0);
-    expect(stats.message).toContain('BORDERLINE');
+    expect(stats.message).toContain('one absence drops you below 75%');
   });
 });
 
-describe('calculateNextAction', () => {
-  const monday = new Date(2026, 7, 10, 10, 30); // Monday 2026-08-10 10:30
-  const sunday = new Date(2026, 7, 16, 10, 30); // Sunday 2026-08-16
-
-  const timetable: TimetableSlot[] = [
-    {
-      id: 't1', courseCode: 'CSE2001', courseTitle: 'DSA', slot: 'A1',
-      facultyName: 'Dr. V', venue: 'SJT 204', building: 'SJT', roomNo: '204',
-      day: 'Monday', startTime: '08:00', endTime: '08:50', isLab: false,
-    },
-    {
-      id: 't2', courseCode: 'CSE2004', courseTitle: 'DBMS', slot: 'B1',
-      facultyName: 'Prof. A', venue: 'SJT 308', building: 'SJT', roomNo: '308',
-      day: 'Monday', startTime: '09:00', endTime: '09:50', isLab: false,
-    },
-    {
-      id: 't3', courseCode: 'CSE2008', courseTitle: 'OS', slot: 'D1',
-      facultyName: 'Dr. J', venue: 'SJT 112', building: 'SJT', roomNo: '112',
-      day: 'Monday', startTime: '14:00', endTime: '14:50', isLab: false,
-    },
-  ];
-
-  const attendance = [
-    { courseCode: 'CSE2001', percentage: 87.5 } as AttendanceRecord,
-    { courseCode: 'CSE2004', percentage: 76.6 } as AttendanceRecord,
-    { courseCode: 'CSE2008', percentage: 71.4 } as AttendanceRecord,
-  ];
-
-  const exams: ExamSchedule[] = [
-    {
-      id: 'ex1', courseCode: 'MAT2002', courseTitle: 'DMGT', examType: 'CAT 2',
-      date: '2026-08-18', time: '10:00 AM - 11:30 AM', venue: 'AB1 205', seatNo: 'R1',
-      syllabusTopics: [], topicsCompleted: 0, studyPriority: 'High',
-    },
-  ];
-
-  it('flags Exam Day when an exam is today', () => {
-    const examToday = new Date(2026, 7, 18, 9, 0); // Tuesday 2026-08-18
-    const state = calculateNextAction(timetable, attendance, exams, examToday);
-    expect(state.currentStatus).toBe('Exam Day');
+describe('bunk counts are classes, not VTOP periods', () => {
+  // VTOP counts 50-minute periods; a lab session is a two-period block. The
+  // calculator used to print the period budget as a class count, so a lab at
+  // 18/18 promised six skips when only three lab sessions existed.
+  it('converts a lab period budget into lab sessions', () => {
+    const stats = calculateBunkStats({
+      attended: 18, totalHeld: 18, percentage: 100, type: 'ELA', slot: 'L31+L32',
+    } as AttendanceRecord, 75);
+    // floor((100*18 - 75*18) / 75) = 6 spare periods = 3 two-period labs.
+    expect(stats.canBunk).toBe(3);
+    expect(stats.unit).toBe('lab session');
+    expect(stats.message).toContain('3 more lab sessions');
   });
 
-  it('detects an active class at 10:30 (between the 08:00 and 09:00 classes -> free period)', () => {
-    const state = calculateNextAction(timetable, attendance, exams, monday);
-    // 10:30 is after both morning classes and before 14:00 -> upcoming D1
-    expect(state.currentStatus).toBe('Upcoming Class');
-    expect(state.title).toContain('CSE2008');
+  it('rounds the classes needed to recover up, not the periods', () => {
+    const stats = calculateBunkStats({
+      attended: 8, totalHeld: 12, percentage: 66.7, type: 'ELA', slot: 'L31+L32',
+    } as AttendanceRecord, 75);
+    // ceil((75*12 - 100*8) / 25) = 4 periods = 2 lab sessions.
+    expect(stats.mustAttend).toBe(2);
+    expect(stats.message).toContain('next 2 lab sessions');
   });
 
-  it('detects active class during a class window', () => {
-    const atClass = new Date(2026, 7, 10, 8, 20);
-    const state = calculateNextAction(timetable, attendance, exams, atClass);
-    expect(state.currentStatus).toBe('Class Active');
-    expect(state.title).toContain('CSE2001');
+  it('will not call a lab safe to bunk when only one spare period is left', () => {
+    const stats = calculateBunkStats({
+      attended: 7, totalHeld: 8, percentage: 87.5, type: 'ELA', slot: 'L31+L32',
+    } as AttendanceRecord, 75);
+    // One spare period, but the next lab absence costs two.
+    expect(stats.canBunk).toBe(0);
+    expect(stats.safeToBunk).toBe(false);
   });
 
-  it('handles weekends as free', () => {
-    const state = calculateNextAction(timetable, attendance, exams, sunday);
-    expect(state.currentStatus).toBe('Evening Free');
+  it('still reports theory rows one class at a time', () => {
+    const stats = calculateBunkStats({
+      attended: 28, totalHeld: 32, percentage: 87.5, type: 'ETH', slot: 'A1',
+    } as AttendanceRecord, 75);
+    expect(stats.canBunk).toBe(5);
+    expect(stats.unit).toBe('class');
+  });
+
+  it('keeps a blended aggregate honest by counting periods', () => {
+    const stats = calculateBunkStats({
+      attended: 28, totalHeld: 32, percentage: 87.5, type: 'TH', slot: '',
+    } as AttendanceRecord, 75, { periods: true });
+    expect(stats.canBunk).toBe(5);
+    expect(stats.unit).toBe('period');
+    expect(stats.message).toContain('5 more periods');
+    expect(stats.message).toContain('lab session counts as two');
+  });
+});
+
+describe('the bunk heading names the line actually crossed', () => {
+  it('calls a course under VTOP’s floor a debarment risk', () => {
+    const stats = calculateBunkStats({ attended: 20, totalHeld: 28, percentage: 71.4 } as AttendanceRecord, 85);
+    expect(stats.state).toBe('debar-risk');
+    expect(stats.status).toBe('Debarred risk');
+  });
+
+  it('will not call a 78% course a debarment risk because the bar is 85%', () => {
+    // The old copy put both situations under one heading, so a student clear of
+    // VTOP's line was told they were headed for debarment — by a bar they set
+    // themselves, in a sentence about a rule that had not been broken.
+    const stats = calculateBunkStats({ attended: 31, totalHeld: 40, percentage: 77.5 } as AttendanceRecord, 85);
+    expect(stats.state).toBe('below-target');
+    expect(stats.status).toBe('Below your target');
+    expect(stats.status).not.toMatch(/debar/i);
+  });
+
+  it('says "on target" once the bar is met, at any bar', () => {
+    const stats = calculateBunkStats({ attended: 34, totalHeld: 40, percentage: 85 } as AttendanceRecord, 85);
+    expect(stats.state).toBe('on-target');
+    expect(stats.status).toBe('On target');
+    expect(stats.message).toContain('85%');
+  });
+
+  it('speaks to the student, not the log', () => {
+    for (const [attended, totalHeld, target] of [[20, 28, 85], [31, 40, 85], [34, 40, 85]] as const) {
+      const stats = calculateBunkStats({ attended, totalHeld } as AttendanceRecord, target);
+      expect(stats.message).not.toMatch(/^(CRITICAL|SAFE|BORDERLINE):/);
+      expect(stats.message).not.toMatch(/\b[A-Z]{4,}\b/);
+    }
+  });
+
+  it('quotes the bar it was given in the sentence it writes', () => {
+    const low = calculateBunkStats({ attended: 20, totalHeld: 28, percentage: 71.4 } as AttendanceRecord, 75);
+    const high = calculateBunkStats({ attended: 20, totalHeld: 28, percentage: 71.4 } as AttendanceRecord, 90);
+    expect(low.message).toContain('75%');
+    expect(high.message).toContain('90%');
+    expect(high.mustAttend).toBeGreaterThan(low.mustAttend);
+  });
+
+  it('falls back to VTOP’s floor when no bar is passed', () => {
+    const stats = calculateBunkStats({ attended: 20, totalHeld: 28, percentage: 71.4 } as AttendanceRecord);
+    expect(stats.message).toContain(`${VTOP_ATTENDANCE_FLOOR}%`);
+    expect(stats.state).toBe('debar-risk');
   });
 });

@@ -25,6 +25,7 @@ import {
   profileRealHtml,
 } from '../__fixtures__';
 import { parseAttendanceHtml } from '../parsers/attendance';
+import { attendancePercentLabel } from '../../../utils/attendanceBands';
 import { parseTimetableHtml } from '../parsers/timetable';
 import { parseMarksHtml, parseExamsHtml } from '../parsers/marks';
 import { parseSemestersHtml, parseAssignmentsHtml } from '../parsers/semestersAndAssignments';
@@ -55,6 +56,29 @@ describe('parseAttendanceHtml', () => {
     expect(rows[0]).toMatchObject({ courseCode: 'CSE2008', attended: 27, totalHeld: 30, percentage: 90 });
     // Missing percentage is recomputed: 25/30 = 83.3
     expect(rows[1].percentage).toBeCloseTo(83.3, 1);
+  });
+
+  it('recomputes a missing percentage in the same tenths VTOP itself shows', () => {
+    // 2/3 is the case that used to split: VTOP writes "66.66" in that cell and
+    // the app prints "66.6", but when the cell was absent the parser rounded the
+    // recomputed figure to 66.7 and stored THAT. The cached record, the summary
+    // cards and the debar filter then quoted a number VTOP never wrote, and the
+    // same course read 66.6 or 66.7 depending on whether a column parsed.
+    const html = `<!doctype html><html><body><table class="table">
+      <thead><tr><th>Course Code</th><th>Course Title</th><th>Course Type</th><th>Slot</th><th>Attended</th><th>Total</th><th>Percentage</th></tr></thead>
+      <tbody>
+        <tr><td>CSE3001</td><td>Compiler Design</td><td>ETH</td><td>A1</td><td>2</td><td>3</td><td></td></tr>
+        <tr><td>CSE3002</td><td>Computer Networks</td><td>ETH</td><td>B1</td><td>2</td><td>3</td><td>66.66%</td></tr>
+      </tbody>
+    </table></body></html>`;
+    const rows = parseAttendanceHtml(html);
+    expect(rows).toHaveLength(2);
+    // The recomputed row lands on the tenth the label would print for VTOP's own
+    // figure — 66.6, not 66.7.
+    expect(rows[0].percentage).toBe(66.6);
+    // VTOP's number is still the authority when it answers, decimals and all.
+    expect(rows[1].percentage).toBe(66.66);
+    expect(attendancePercentLabel(rows[0].percentage)).toBe(attendancePercentLabel(rows[1].percentage));
   });
 
   it('returns [] with structural mismatch for malformed HTML', () => {
@@ -472,8 +496,8 @@ describe('parseStudentProfileHtml (real shape)', () => {
     const outcome = parseStudentProfileHtml(profileRealHtml, true);
     expect(outcome.structuralMismatch).toBe(false);
     expect(outcome.data).toMatchObject({
-      registrationNo: '23BCE1082',
-      name: 'Kausik R',
+      registrationNo: '23BCE0000',
+      name: 'Aarav R',
       program: 'UG',
       school: 'SCOPE',
     });
@@ -545,8 +569,8 @@ describe('parseStudentProfileHtml', () => {
     const outcome = parseStudentProfileHtml(profileHtml, true);
     expect(outcome.structuralMismatch).toBe(false);
     expect(outcome.data).toMatchObject({
-      registrationNo: '23BCE1082',
-      name: 'Kausik',
+      registrationNo: '23BCE0000',
+      name: 'Aarav',
       branch: 'Computer Science & Engineering',
       cgpa: 8.92,
       proctorName: 'Dr. R. Ramanathan',
@@ -554,9 +578,9 @@ describe('parseStudentProfileHtml', () => {
     // Regression: proctor contact must come from PROCTOR-prefixed labels only.
     // The student's own Email/Mobile Number block appears first on the page and
     // used to be stored as the proctor's via the generic fallback patterns.
-    expect(outcome.data.proctorEmail).toBe('ramanathan.r@vit.ac.in');
+    expect(outcome.data.proctorEmail).toBe('faculty.name@vit.ac.in');
     expect(outcome.data.proctorMobile).toBe('+91 98765 43210');
-    expect(outcome.data.proctorEmail).not.toBe('kausik.r2023@vitstudent.ac.in');
+    expect(outcome.data.proctorEmail).not.toBe('student.name2025@vitstudent.ac.in');
     expect(outcome.data.proctorMobile).not.toBe('9876543210');
   });
 

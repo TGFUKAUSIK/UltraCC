@@ -1,7 +1,7 @@
 /**
  * transportNormalize.ts — pure normalization for the upstream transport feed.
  *
- * The upstream transport feed returns
+ * The upstream API (api.amazecc.com/api/transport/routes) returns
  * `{ success, routes: [...] }` with snake_case route fields and per-route
  * nested `placements`. The frontend consumes the camelCase TransportSeed
  * shape. Nothing is invented here: every field is either copied from the

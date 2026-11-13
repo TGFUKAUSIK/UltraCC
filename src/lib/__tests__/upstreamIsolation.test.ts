@@ -18,6 +18,7 @@ import { join } from 'path';
 const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 
 const UPSTREAM_PATTERNS: RegExp[] = [
+  /api\.amazecc\.com/i,
   // CodeChef-VIT's Papers API: the Q-Bank archive is imported server-side by
   // supabase/functions/pyq-sync into Postgres, so the browser must never name
   // this host — it reads pyq_papers through PostgREST instead.
@@ -70,12 +71,11 @@ describe('frontend upstream isolation', () => {
   });
 
   it('server-side ingest is the ONLY place upstream URLs live', () => {
+    const gateway = readFileSync(join(PROJECT_ROOT, 'supabase/functions/campus-data/index.ts'), 'utf8');
+    // The upstream hosts must exist exactly inside the edge function.
+    expect(gateway).toMatch(/api\.amazecc\.com/);
+
     const importer = readFileSync(join(PROJECT_ROOT, 'supabase/functions/pyq-sync/sync.ts'), 'utf8');
     expect(importer).toMatch(/papers\.codechefvit\.com/);
-
-    // The campus-data function has no hardcoded third-party host; its upstream
-    // endpoints come from deploy-time environment variables.
-    const campusData = readFileSync(join(PROJECT_ROOT, 'supabase/functions/campus-data/index.ts'), 'utf8');
-    expect(campusData).toMatch(/Deno\.env\.get/);
   });
 });

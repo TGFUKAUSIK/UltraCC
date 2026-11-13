@@ -7,12 +7,13 @@
  */
 
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { MapPin, Search, XCircle, Building2, Sparkles, Info } from 'lucide-react';
+import { MapPin, Search, Building2, Clock, Info } from 'lucide-react';
 import { TimetableSlot } from '../lib/vtop/types';
 import {
-  ROOM_DAYS, periodsForDay, currentPeriodIndex, allKnownRooms,
+  ROOM_DAYS, periodsForDay, currentPeriodIndex, allKnownRooms, dayIsScheduled,
   occupiedRoomsForPeriod, catalogueOccupiedRooms, roomBlock, isLabRoom, type RoomDay,
 } from '../utils/roomAvailability';
+import { minutesOfDay } from '../utils/timetableGrid';
 
 interface FreeClassroomsViewProps {
   timetable: TimetableSlot[];
@@ -45,16 +46,18 @@ export const FreeClassroomsView: React.FC<FreeClassroomsViewProps> = ({ timetabl
   const rooms = useMemo(() => allKnownRooms(timetableVenues), [timetableVenues]);
 
   const { occupiedRooms, freeByBlock } = useMemo(() => {
-    const occupied = period
-      ? occupiedRoomsForPeriod(
-          timetable.map((s) => ({ slot: s.slot, venue: s.venue || s.room || '' })),
-          selectedDay,
-          selectedPeriodIdx,
-        )
-      : new Set<string>();
+    // A day the FFCS grid does not publish (Saturday at Chennai) has no
+    // schedule to compare against. Listing every room as free there would be a
+    // lie — the absence of a class is not evidence of an empty room.
+    if (!period) return { occupiedRooms: new Set<string>(), freeByBlock: {} as Record<string, string[]> };
+    const occupied = occupiedRoomsForPeriod(
+      timetable.map((s) => ({ slot: s.slot, venue: s.venue || s.room || '' })),
+      selectedDay,
+      selectedPeriodIdx,
+    );
     // Union with campus-wide catalogue occupancy so a room used by ANY class
     // (not just this student's) shows busy.
-    if (period) for (const room of catalogueOccupiedRooms(selectedDay, selectedPeriodIdx)) occupied.add(room);
+    for (const room of catalogueOccupiedRooms(selectedDay, selectedPeriodIdx)) occupied.add(room);
     const free: Record<string, string[]> = {};
     for (const room of rooms) {
       const block = roomBlock(room);
@@ -76,6 +79,7 @@ export const FreeClassroomsView: React.FC<FreeClassroomsViewProps> = ({ timetabl
 
   const totalFree = Object.values<string[]>(freeByBlock).reduce((n, arr) => n + arr.length, 0);
   const totalOccupied = occupiedRooms.size;
+  const dayLabel = ROOM_DAYS.find((d) => d.id === selectedDay)?.label ?? selectedDay;
 
   const jumpToNow = useCallback(() => {
     const cur = getCurrentDayTime();
@@ -87,230 +91,235 @@ export const FreeClassroomsView: React.FC<FreeClassroomsViewProps> = ({ timetabl
     }
   }, [dayIds]);
 
+  const shortRoom = (room: string) => (room.includes('-') ? room.split('-').slice(1).join('-') : room);
+
   return (
-    <div className="space-y-4 pb-12">
-      {/* Hero Banner */}
-      <div className="bg-white border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600">
-              <MapPin className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-extrabold text-zinc-900 tracking-tight">Free Classrooms</h2>
-              <p className="text-xs text-zinc-500 font-medium">Find an empty room or lab for studying</p>
-            </div>
+    <div className="uc-index pb-12">
+      {/* Mast: the answer first — how much is free, and for when. */}
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">Rooms &amp; labs · from the FFCS grid</span>
+            <h2 className="uc-dir-name">What&rsquo;s free right now</h2>
+            <p className="uc-note">Find an empty room or lab for studying, or check any other day and period.</p>
           </div>
           {todayIsScheduled && (
-            <button
-              onClick={jumpToNow}
-              className="px-3 py-1.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 rounded-xl text-xs font-bold transition hover:bg-emerald-500/25 cursor-pointer flex items-center gap-1.5"
-            >
-              <Sparkles className="h-3 w-3" /> Jump to Right Now
-            </button>
+            <div className="uc-dir-rail">
+              <button className="uc-dir-go acc-bg" onClick={jumpToNow}>
+                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+                Jump to right now
+              </button>
+            </div>
           )}
         </div>
 
-        {/* Metrics */}
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
-            <p className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">Total Free</p>
-            <p className="text-2xl font-black text-zinc-900 font-mono">{totalFree}</p>
+        <div className="uc-free-metrics">
+          <div className="uc-free-metric is-free">
+            <span>Free</span>
+            <b className="uc-num">{totalFree}</b>
           </div>
-          <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-center">
-            <p className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider">Theory</p>
-            <p className="text-2xl font-black text-zinc-900 font-mono">{freeRoomsCount(freeByBlock, false)}</p>
+          <div className="uc-free-metric">
+            <span>Theory rooms</span>
+            <b className="uc-num">{freeRoomsCount(freeByBlock, false)}</b>
           </div>
-          <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-center">
-            <p className="text-[10px] font-extrabold text-cyan-600 uppercase tracking-wider">Labs</p>
-            <p className="text-2xl font-black text-zinc-900 font-mono">{freeRoomsCount(freeByBlock, true)}</p>
+          <div className="uc-free-metric">
+            <span>Labs</span>
+            <b className="uc-num">{freeRoomsCount(freeByBlock, true)}</b>
+          </div>
+          <div className="uc-free-metric is-busy">
+            <span>In class</span>
+            <b className="uc-num">{totalOccupied}</b>
           </div>
         </div>
-        <p className="mt-3 text-[10px] text-zinc-500 flex items-start gap-1.5">
-          <Info className="h-3 w-3 shrink-0 mt-0.5" />
-          Free/occupied status reflects classes scheduled in the FFCS course catalogue and your synced timetable — it is a
-          planning guide, not a live room-sensor feed. Lunch (13:25–14:00) has no scheduled classes.
-        </p>
-      </div>
 
-      {/* Controls */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-4 sm:p-5 shadow-xl space-y-4">
-        {/* Day Selector */}
-        <div>
-          <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider mb-1.5">Day of Week</p>
-          {/* 3 columns below 380px: six day buttons at 320px viewport shrink under a comfortable tap target. */}
-          <div role="group" aria-label="Day of week" className={`grid gap-1.5 grid-cols-3 ${todayIsScheduled ? 'min-[380px]:grid-cols-5' : 'min-[380px]:grid-cols-6'}`}>
-            {ROOM_DAYS.map((d) => {
-              const isToday = d.id === todayId;
-              return (
-                <button
-                  type="button"
-                  key={d.id}
-                  aria-pressed={selectedDay === d.id}
-                  onClick={() => { setSelectedDay(d.id); setSelectedPeriodIdx(0); }}
-                  className={`py-2 px-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center ${
-                    selectedDay === d.id
-                      ? 'bg-emerald-600 text-zinc-900'
-                      : 'bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900'
-                  }`}
-                >
-                  <span className="sm:hidden">{d.label.slice(0, 3)}</span>
-                  <span className="hidden sm:inline">{d.label}</span>
-                  {isToday && (
-                    <span className={`text-[9px] block mt-0.5 font-extrabold ${selectedDay === d.id ? 'text-white' : 'text-emerald-700'}`}>
-                      Today
-                    </span>
-                  )}
+        <div className="uc-dir-detail">
+          <div className="uc-note-row">
+            <Info aria-hidden="true" />
+            <span>
+              Free/occupied status reflects classes scheduled in the FFCS course catalogue and your synced timetable —
+              it is a planning guide, not a live room-sensor feed. Lunch (13:25–14:00) has no scheduled classes. A period
+              is shown from the earlier of its two bells to the later one: several of VTOP&rsquo;s lab periods start five
+              minutes before the theory class numbered with them, and a room is only free when neither kind of class is in it.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div className="uc-free-cols">
+        {/* Controls: one row of choices, compact. */}
+        <section className="uc-plate">
+          <header className="uc-plate-head">
+            <div className="uc-dir-id">
+              <span className="uc-cap">Choose a slot</span>
+              <p className="uc-note">{dayLabel}{period ? ` · ${period.start}–${period.end}` : ' · no schedule published'}</p>
+            </div>
+          </header>
+          <div className="uc-dir-tools">
+            <div>
+              <span className="uc-free-label">Day of week</span>
+              {/* 3 columns below 380px: six day buttons at 320px viewport shrink under a comfortable tap target. */}
+              <div role="group" aria-label="Day of week" className="uc-chips">
+                {ROOM_DAYS.map((d) => {
+                  const isToday = d.id === todayId;
+                  return (
+                    <button
+                      type="button"
+                      key={d.id}
+                      aria-pressed={selectedDay === d.id}
+                      onClick={() => { setSelectedDay(d.id); setSelectedPeriodIdx(0); }}
+                      className={selectedDay === d.id ? 'is-on' : ''}
+                    >
+                      {d.label}
+                      {isToday && <span className="uc-chip-flag">Today</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <span className="uc-free-label">Time period</span>
+              <div role="group" aria-label="Time period" className="uc-chips">
+                {periods.map((p, i) => {
+                  /* "Which period is now" is one rule: the same `currentPeriodIndex`
+                     the view opens on and "Jump to Right Now" uses, including its
+                     ten minutes of walk-up before the bell. The marker used to ask
+                     its own stricter question, so the period the list was showing
+                     could carry no marker at all — and the screen then answered "is
+                     this the current period?" yes and no at once. */
+                  const isNow = now.day === selectedDay && currentPeriodIndex(selectedDay, now.nowMin) === i;
+                  return (
+                    <button
+                      type="button"
+                      key={i}
+                      aria-pressed={selectedPeriodIdx === i}
+                      onClick={() => setSelectedPeriodIdx(i)}
+                      className={selectedPeriodIdx === i ? 'is-on' : ''}
+                    >
+                      {isNow && <span className="uc-chip-dot animate-pulse" aria-hidden="true" />}
+                      <span className="uc-num">{p.start}–{p.end}</span>
+                      {isNow && <span className="sr-only">Current period</span>}
+                    </button>
+                  );
+                })}
+                {periods.length === 0 && (
+                  <p className="uc-dir-sub">No scheduled periods for this day.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="uc-free-filters">
+              <div className="uc-dir-search">
+                <Search aria-hidden="true" />
+                <input
+                  type="text"
+                  aria-label="Search rooms"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search rooms…"
+                />
+              </div>
+              <div className="uc-chips" role="group" aria-label="Filter by block">
+                {['All', ...Object.keys(freeByBlock).sort()].map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    aria-pressed={selectedBlock === b}
+                    onClick={() => setSelectedBlock(b)}
+                    className={selectedBlock === b ? 'is-on' : ''}
+                  >
+                    {b}{b !== 'All' && <span className="uc-quiet"> {(freeByBlock[b] || []).length}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="uc-free-stack">
+          {/* The rooms themselves. */}
+          {!period ? (
+            <section className="uc-plate">
+              <div className="uc-dir-blank">
+                <b>No class schedule for this day.</b> VTOP publishes its FFCS timetable grid Monday to Friday, so there is
+                nothing to check {dayLabel} against. A room is only listed as free when the schedule says no class uses it —
+                pick a weekday to see real availability.
+              </div>
+            </section>
+          ) : rooms.length === 0 ? (
+            <section className="uc-plate">
+              <div className="uc-dir-blank">
+                <b>No room data yet.</b> Sync your timetable from VTOP — rooms come from the FFCS catalogue and your
+                registered courses.
+              </div>
+            </section>
+          ) : filteredBlocks.length === 0 ? (
+            <section className="uc-plate">
+              <div className="uc-dir-blank">
+                <b>No rooms or labs match these filters.</b> Every room matching your search and block is occupied for this
+                period, or the search is narrower than the catalogue.
+                <button className="uc-dir-go" onClick={() => { setSelectedBlock('All'); setSearch(''); }}>
+                  Reset filters
                 </button>
-              );
-            })}
-         </div>
-        </div>
-
-        {/* Time Period */}
-        <div>
-          <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider mb-1.5">Time Period</p>
-          <div role="group" aria-label="Time period" className="flex overflow-x-auto gap-2 no-scrollbar pb-1">
-            {periods.map((p, i) => {
-              const isNow = selectedDay === todayId && p.startMin <= now.nowMin && now.nowMin <= p.endMin;
-              return (
-                <button
-                  type="button"
-                  key={i}
-                  aria-pressed={selectedPeriodIdx === i}
-                  onClick={() => setSelectedPeriodIdx(i)}
-                  className={`px-3 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                    selectedPeriodIdx === i
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-900'
-                  }`}
-                >
-                  {isNow && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />}
-                  <span>{p.start}–{p.end}</span>
-                  {isNow && <span className="sr-only">happening now</span>}
-                </button>
-              );
-            })}
-            {periods.length === 0 && (
-              <p className="text-xs text-zinc-500 py-2">No scheduled periods for this day.</p>
-            )}
-          </div>
-        </div>
-
-        {/* Search + Block filter */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-            <input
-              type="text"
-              aria-label="Search rooms"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search rooms…"
-              className="w-full bg-white border border-zinc-200 rounded-xl pl-9 pr-3 py-2 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-          <div className="flex overflow-x-auto gap-1.5 no-scrollbar">
-            {['All', ...Object.keys(freeByBlock).sort()].map((b) => (
-              <button
-                key={b}
-                onClick={() => setSelectedBlock(b)}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold shrink-0 transition-all cursor-pointer ${
-                  selectedBlock === b
-                    ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40'
-                    : 'bg-white text-zinc-500 hover:text-zinc-900 border border-zinc-200'
-                }`}
-              >
-                {b} {b !== 'All' && <span className="opacity-60">({(freeByBlock[b] || []).length})</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Results */}
-      {rooms.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-3xl p-8 text-center">
-          <Building2 className="h-10 w-10 text-zinc-600 mx-auto mb-3" />
-          <p className="text-sm font-bold text-zinc-900">No room data yet</p>
-          <p className="text-xs text-zinc-500 mt-1">
-            Sync your timetable from VTOP — rooms come from the FFCS catalogue and your registered courses.
-          </p>
-        </div>
-      ) : filteredBlocks.length === 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-3xl p-8 text-center">
-          <Building2 className="h-10 w-10 text-zinc-600 mx-auto mb-3" />
-          <p className="text-sm font-bold text-zinc-900">No rooms or labs found</p>
-          <p className="text-xs text-zinc-500 mt-1">All rooms matching your filters are occupied for this time slot.</p>
-          <button
-            onClick={() => { setSelectedBlock('All'); setSearch(''); }}
-            className="mt-3 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-zinc-900 rounded-xl text-xs font-bold transition cursor-pointer"
-          >
-            Reset Filters
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-[10px] text-zinc-500 font-semibold px-1">
-            {totalFree} free rooms across {filteredBlocks.length} blocks
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredBlocks.map((block) => {
-              const roomsInBlock = freeByBlock[block];
-              const filteredRooms = search.trim()
-                ? roomsInBlock.filter((r) => r.toLowerCase().includes(search.toLowerCase()))
-                : roomsInBlock;
-              if (filteredRooms.length === 0) return null;
-              return (
-                <div key={block} className="bg-white border border-zinc-200 rounded-3xl p-4 sm:p-5 shadow-xl">
-                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-200">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-600">
-                        <Building2 className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-extrabold text-zinc-900">{block}</h3>
-                        <p className="text-[10px] text-zinc-500">Academic Building</p>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 text-xs font-bold font-mono">
-                      {filteredRooms.length} Free
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {filteredRooms.map((room) => (
-                      <span
-                        key={room}
-                        className="px-2.5 py-1.5 bg-emerald-500/5 border border-emerald-500/15 rounded-xl text-xs font-mono text-emerald-700"
-                      >
-                        {room.includes('-') ? room.split('-').slice(1).join('-') : room}
-                      </span>
-                    ))}
-                  </div>
+              </div>
+            </section>
+          ) : (
+            <section className="uc-plate">
+              <header className="uc-plate-head">
+                <div className="uc-dir-id">
+                  <span className="uc-cap">Free rooms</span>
+                  <p className="uc-note">
+                    {totalFree} free {totalFree === 1 ? 'room' : 'rooms'} across {filteredBlocks.length}{' '}
+                    {filteredBlocks.length === 1 ? 'block' : 'blocks'} · {dayLabel} {period.start}–{period.end}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+                <span className="uc-dir-count">{totalOccupied} in class</span>
+              </header>
+              {filteredBlocks.map((block) => {
+                const roomsInBlock = freeByBlock[block];
+                const filteredRooms = search.trim()
+                  ? roomsInBlock.filter((r) => r.toLowerCase().includes(search.toLowerCase()))
+                  : roomsInBlock;
+                if (filteredRooms.length === 0) return null;
+                return (
+                  <article key={block} className="uc-free-block">
+                    <div className="uc-free-block-head">
+                      <span className="uc-dir-title">{block}</span>
+                      <span className="uc-dir-count">
+                        {filteredRooms.length} free
+                      </span>
+                    </div>
+                    <div className="uc-free-rooms">
+                      {filteredRooms.map((room) => (
+                        <span key={room} className="uc-free-room uc-num">{shortRoom(room)}</span>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          )}
 
-      {/* Occupied Rooms */}
-      {totalOccupied > 0 && (
-        <div className="bg-white border border-rose-500/20 rounded-3xl p-5 shadow-xl">
-          <div className="flex items-center gap-2 mb-3">
-            <XCircle className="h-4 w-4 text-rose-600" />
-            <h3 className="text-sm font-extrabold text-rose-700">Occupied ({totalOccupied})</h3>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {Array.from(occupiedRooms).sort().map((room) => (
-              <span key={room} className="px-2 py-1 bg-rose-500/5 border border-rose-500/15 rounded-lg text-[11px] font-mono text-rose-600">
-                {room}
-              </span>
-            ))}
-          </div>
+          {/* Occupied rooms, as the quiet counterweight to the free list. */}
+          {totalOccupied > 0 && (
+            <section className="uc-plate uc-plate--quiet">
+              <div className="uc-plate-head">
+                <div className="uc-dir-id">
+                  <span className="uc-cap">In class this period</span>
+                  <p className="uc-note">
+                    {totalOccupied} rooms the catalogue or your timetable has a class in.
+                  </p>
+                </div>
+              </div>
+              <div className="uc-free-rooms is-busy">
+                {Array.from(occupiedRooms).sort().map((room) => (
+                  <span key={room} className="uc-free-room is-busy uc-num">{room}</span>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -323,5 +332,5 @@ function freeRoomsCount(freeByBlock: Record<string, string[]>, labs: boolean): n
 function getCurrentDayTime(): { day: string; nowMin: number } {
   const now = new Date();
   const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  return { day: dayNames[now.getDay()], nowMin: now.getHours() * 60 + now.getMinutes() };
+  return { day: dayNames[now.getDay()], nowMin: minutesOfDay(now) };
 }

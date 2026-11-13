@@ -3,7 +3,7 @@
  *
  * Contract: periods and slot→time mappings come ONLY from the authoritative
  * Chennai FFCS grid; labs (L1..L60) count exactly like theory slots; junk
- * venues never become rooms. Occupancy parity: a room is busy when ANY class
+ * venues never become rooms. AmazeCC parity: a room is busy when ANY class
  * (theory or lab) occupies it in the selected period.
  */
 
@@ -11,7 +11,9 @@ import { describe, it, expect } from 'vitest';
 import {
   periodsForDay,
   currentPeriodIndex,
+  PERIOD_START_GRACE_MINUTES,
   allKnownRooms,
+  dayIsScheduled,
   normalizeRoom,
   roomBlock,
   isLabRoom,
@@ -39,6 +41,21 @@ describe('periodsForDay — grid-derived periods', () => {
     expect(periods[11].end).toBe('19:25');
   });
 
+  it('widens a period to whichever class starts first and ends last', () => {
+    const mon = periodsForDay('mon');
+    // VTOP's own grid puts theory period 2 at 08:55–09:45 and the lab numbered
+    // with it at 08:50–09:40. Printing only the theory clock left 08:50–08:55
+    // looking like free time in a room whose lab had already begun, so the
+    // period is the union of the two rows: 08:50 to 09:45.
+    expect(mon[1].theorySlots).toEqual(['F1']);
+    expect(mon[1].labSlots).toEqual(['L2']);
+    expect(mon[1].start).toBe('08:50');
+    expect(mon[1].end).toBe('09:45');
+    // The last period keeps the theory bell, which is the later of the two.
+    expect(mon[11].start).toBe('18:30');
+    expect(mon[11].end).toBe('19:25');
+  });
+
   it('maps Monday period 0 to theory A1 and lab L1', () => {
     const periods = periodsForDay('mon');
     expect(periods[0].theorySlots).toContain('A1');
@@ -54,8 +71,10 @@ describe('periodsForDay — grid-derived periods', () => {
     expect(p!.labSlots).toContain('L31');
   });
 
-  it('maps the 8:55–9:45 Monday period to F1 (old table wrongly said B1)', () => {
-    const p = periodsForDay('mon').find((x) => x.start === '08:55');
+  it('maps the 08:50 period to theory F1 (old table wrongly said B1)', () => {
+    // Named by the period it starts, which the lab row now decides: theory F1
+    // itself rings at 08:55.
+    const p = periodsForDay('mon').find((x) => x.start === '08:50');
     expect(p!.theorySlots).toContain('F1');
     expect(p!.theorySlots).not.toContain('B1');
   });
@@ -74,6 +93,15 @@ describe('periodsForDay — grid-derived periods', () => {
     expect(ROOM_DAYS.some((d) => d.id === 'sat')).toBe(true);
   });
 
+  it('names Saturday unscheduled so the view cannot call every room free', () => {
+    // An empty occupancy set on an unscheduled day means "no data", not
+    // "empty campus". dayIsScheduled is the guard the view checks first.
+    expect(dayIsScheduled('sat')).toBe(false);
+    for (const day of ['mon', 'tue', 'wed', 'thu', 'fri'] as const) {
+      expect(dayIsScheduled(day)).toBe(true);
+    }
+  });
+
   it('indexes periods contiguously per day', () => {
     const periods = periodsForDay('tue');
     periods.forEach((p, i) => expect(p.idx).toBe(i));
@@ -81,16 +109,48 @@ describe('periodsForDay — grid-derived periods', () => {
 });
 
 describe('currentPeriodIndex — now detection', () => {
-  it('finds the period containing now (with 10-minute grace before start)', () => {
-    // Monday 08:05 → period 0; 07:52 → grace window of period 0.
+  it('finds the period containing now, from its walk-up to its bell', () => {
+    // Monday 08:05 → period 0; 07:52 → the walk-up half of period 0, because a
+    // student hunting for a room before class wants the room they are about to
+    // sit in, not the one they have already left.
     expect(currentPeriodIndex('mon', 8 * 60 + 5)).toBe(0);
     expect(currentPeriodIndex('mon', 8 * 60 - 8)).toBe(0);
+  });
+
+  it('opens a period exactly PERIOD_START_GRACE_MINUTES early, and no earlier', () => {
+    // One rule, one number: the list's selection and its "current period"
+    // marker both come from here, so the grace is stated once and read by both.
+    const first = periodsForDay('mon')[0];
+    expect(currentPeriodIndex('mon', first.startMin - PERIOD_START_GRACE_MINUTES)).toBe(0);
+    expect(currentPeriodIndex('mon', first.startMin - PERIOD_START_GRACE_MINUTES - 1)).toBe(-1);
   });
 
   it('returns -1 outside class hours and during lunch (13:25–14:00)', () => {
     expect(currentPeriodIndex('mon', 13 * 60 + 35)).toBe(-1); // lunch
     expect(currentPeriodIndex('mon', 20 * 60)).toBe(-1);
     expect(currentPeriodIndex('sat', 10 * 60)).toBe(-1);
+  });
+
+  it('never leaves a minute inside teaching hours without exactly one period', () => {
+    // Every minute of a period must answer "current period?" once, or the
+    // screen can show two markers, or none.
+    for (const day of ['mon', 'tue', 'wed', 'thu', 'fri'] as const) {
+      const periods = periodsForDay(day);
+      for (const p of periods) {
+        expect(currentPeriodIndex(day, p.startMin), `${day} period ${p.idx} at its start`).toBe(p.idx);
+        expect(currentPeriodIndex(day, p.endMin - 1), `${day} period ${p.idx} before its bell`).toBe(p.idx);
+      }
+    }
+  });
+
+  it('hands the bell minute to the period that starts on it', () => {
+    // Theory period 1 rings out at 08:50 and the lab numbered with it rings in
+    // at 08:50, so somebody is inside that room at that minute either way.
+    // Answering with the earlier period would list the room as free while its
+    // next class was already under way.
+    const mon = periodsForDay('mon');
+    expect(mon[0].endMin).toBe(mon[1].startMin);
+    expect(currentPeriodIndex('mon', mon[0].endMin)).toBe(1);
   });
 });
 
@@ -146,7 +206,7 @@ describe('allKnownRooms — catalogue + timetable union', () => {
   });
 });
 
-describe('occupiedRoomsForPeriod — occupancy rules', () => {
+describe('occupiedRoomsForPeriod — AmazeCC-style occupancy', () => {
   const rows = [
     // Theory class Monday 08:00 (A1) in AB1-203.
     { slot: 'A1', venue: 'AB1-203' },
@@ -177,7 +237,10 @@ describe('occupiedRoomsForPeriod — occupancy rules', () => {
 
   it('keeps the lab room occupied across the FULL 2-period block (L31 then L32)', () => {
     const l31 = periodsForDay('mon').findIndex((p) => p.start === '14:00');
-    const l32 = periodsForDay('mon').findIndex((p) => p.start === '14:55');
+    // L32's lab row starts at 14:50, five minutes before the theory period it
+    // shares a number with, and the period is now widened to meet it.
+    const l32 = periodsForDay('mon').findIndex((p) => p.start === '14:50');
+    expect(l32).toBe(l31 + 1);
     expect(occupiedRoomsForPeriod(rows, 'mon', l31).has('SJT-COMPLAB3')).toBe(true);
     expect(occupiedRoomsForPeriod(rows, 'mon', l32).has('SJT-COMPLAB3')).toBe(true);
   });

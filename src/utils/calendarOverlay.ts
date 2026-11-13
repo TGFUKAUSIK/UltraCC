@@ -7,6 +7,8 @@
  * distinguish official academic dates from campus/club happenings.
  */
 
+import { isRealCalendarDate } from './examUtils';
+
 export interface CalendarEventLike {
   eid: string;
   title: string;
@@ -24,14 +26,25 @@ export function classifyEvent(event: CalendarEventLike): EventCategory {
   return 'campus';
 }
 
-/** "2026-09-14", "14-09-2026" or "Sep 14, 2026" → ISO date, or null. */
+/**
+ * "2026-09-14", "14-09-2026" or "Sep 14, 2026" → ISO date, or null.
+ *
+ * Null also covers a day that never happened: "30-02-2026" is three groups of
+ * digits shaped like a date, not a date. Placing it on the calendar grid would
+ * put an event on a day the grid does not have, and once something resolves
+ * that impossible day it lands on March 2nd — the wrong day, honestly printed.
+ */
 export function eventDateKey(raw: string): string | null {
   if (!raw) return null;
   const iso = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  if (iso) {
+    const [, y, m, d] = iso;
+    return isRealCalendarDate(Number(y), Number(m), Number(d)) ? `${y}-${m}-${d}` : null;
+  }
   const dmy = raw.trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (dmy) {
     const [, d, m, y] = dmy;
+    if (!isRealCalendarDate(Number(y), Number(m), Number(d))) return null;
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
   const parsed = new Date(raw);

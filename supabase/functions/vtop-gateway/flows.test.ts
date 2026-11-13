@@ -212,7 +212,7 @@ describe('armStudentSession', () => {
 
 describe('submitLogin', () => {
   const session = { cookie: 'JSESSIONID=sess1; SERVERID=node7', csrf: CSRF };
-  const creds = { regNo: '23BCE1082', password: 'p@ss', captchaText: 'AbC123' };
+  const creds = { regNo: '23BCE0000', password: 'p@ss', captchaText: 'AbC123' };
 
   function postLoginRoute(body: string, status = 200): MockRoute {
     return { status, body };
@@ -231,7 +231,7 @@ describe('submitLogin', () => {
     const form = new URLSearchParams(post.body);
     expect([...form.keys()].sort()).toEqual(['_csrf', 'captchaStr', 'password', 'username']);
     expect(form.get('captchaStr')).toBe('AbC123');
-    expect(form.get('username')).toBe('23BCE1082');
+    expect(form.get('username')).toBe('23BCE0000');
   });
 
   it('never posts a gResponse field — that input means the Google reCAPTCHA variant', async () => {
@@ -255,7 +255,7 @@ describe('submitLogin', () => {
     // where the request is built.
     const { impl, calls } = mockFetch(makeRouter({ '/login:POST': () => postLoginRoute(`<html>${AUTH_MARKER}</html>`) }));
     const out = await submitLogin(impl, BASE, HEADERS, session, {
-      regNo: '  TgFukaUsik ',
+      regNo: '  rEg12345 ',
       password: 'p@ss',
       captchaText: 'AbC123',
     });
@@ -263,7 +263,7 @@ describe('submitLogin', () => {
 
     const post = calls.find((c) => c.method === 'POST' && c.url === '/login')!;
     const form = new URLSearchParams(post.body);
-    expect(form.get('username')).toBe('TGFUKAUSIK');
+    expect(form.get('username')).toBe('REG12345');
     // The CAPTCHA is NOT normalised — VTOP's own field uppercases it, but the
     // verified reference submits what was read/typed; never touch it here.
     expect(form.get('captchaStr')).toBe('AbC123');

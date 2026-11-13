@@ -1,7 +1,7 @@
 /**
  * commandPalette.ts — the data layer behind the ⌘K command palette.
  *
- * Command-palette parity: search must reach REAL synced records —
+ * AmazeCC-style palette parity: search must reach REAL synced records —
  * courses, faculty, venues, exams, attendance and marks — not just a handful
  * of hard-coded intent phrases. Everything here is pure: an index is built
  * from already-synced data and ranked with a simple multi-token scorer.
@@ -12,6 +12,9 @@
  */
 
 import type { AttendanceRecord, CourseMarks, ExamSchedule, TimetableSlot } from '../types';
+import { getTargetAttendance } from './settings';
+import { attendancePercentLabel } from '../utils/attendanceBands';
+import { isReal } from '../utils/placeholders';
 import { isNavHiddenInMode, type FeatureMode } from './navVisibility';
 
 export interface PaletteItem {
@@ -30,6 +33,13 @@ export interface PaletteIndexInput {
   attendance: AttendanceRecord[];
   exams: ExamSchedule[];
   marks: CourseMarks[];
+  /**
+   * The bar to judge attendance against. A surface that already renders the
+   * number should pass the value it renders — an index built once at mount and
+   * left holding yesterday's bar is the same defect that lived in the stored
+   * verdict word. Omitted, the saved preference is read directly.
+   */
+  targetAttendance?: number;
 }
 
 interface Destination {
@@ -63,7 +73,7 @@ const DESTINATIONS: Destination[] = [
   { label: 'Transport', subtitle: 'Bus routes and day-scholar info', tab: 'transport', keywords: 'bus transport route day scholar boarding' },
   { label: 'Library', subtitle: 'Catalog search and due dates', tab: 'library', keywords: 'library koha book catalog search due' },
   { label: 'Events', subtitle: 'Event Hub discovery', tab: 'events', keywords: 'events clubs fest workshops riviera' },
-  { label: 'Hostel', subtitle: 'Mess menu, leave, laundry', tab: 'hostel', keywords: 'hostel mess menu leave laundry warden counselling campus life' },
+  { label: 'Hostel', subtitle: 'Leave tracker, laundry, wardens', tab: 'hostel', keywords: 'hostel mess menu leave laundry warden counselling campus life' },
   { label: 'Faculty & Proctor', subtitle: 'Your proctor and course teachers', tab: 'faculty', keywords: 'faculty proctor teacher courses timetable staff' },
   { label: 'Faculty Directory', subtitle: 'Find faculty contacts', tab: 'directory', keywords: 'faculty teacher professor contact directory search staff' },
   { label: 'Timetable Compare', subtitle: 'Compare schedules with friends', tab: 'social', keywords: 'compare timetable friend free slots common social study groups' },
@@ -96,11 +106,11 @@ export function buildPaletteIndex(input: PaletteIndexInput, mode: FeatureMode = 
     const existing = courseMeta.get(code);
     const venues = existing?.venues ?? new Set<string>();
     const slotTokens = existing?.slotTokens ?? new Set<string>();
-    if (slot.venue) venues.add(slot.venue.trim());
+    if (isReal(slot.venue)) venues.add(slot.venue.trim());
     (slot.slot || '').split(/[+,\s]+/).filter(Boolean).forEach((token) => slotTokens.add(token.toUpperCase()));
     courseMeta.set(code, {
       title: slot.courseTitle || existing?.title || '',
-      faculty: slot.facultyName || existing?.faculty || '',
+      faculty: isReal(slot.facultyName) ? slot.facultyName.trim() : (existing?.faculty || ''),
       venues,
       slotTokens,
       isLab: Boolean(existing?.isLab) || slot.isLab,
@@ -118,15 +128,23 @@ export function buildPaletteIndex(input: PaletteIndexInput, mode: FeatureMode = 
     });
   });
 
-  // Attendance — searchable per course with live percentages.
+  // Attendance — searchable per course with live percentages. Judged against
+  // the same bar the Academics slider sets: the verdict used to come from a
+  // band frozen at sync time (80/75), so a course at 83% read "Safe" in this
+  // list while the card one screen below it said "attend 3 in a row".
+  const targetPercent = input.targetAttendance ?? getTargetAttendance();
   input.attendance.forEach((record) => {
     const code = (record.courseCode || '').trim().toUpperCase();
     if (!code) return;
     courseCodes.add(code);
+    // A component VTOP has not started has no classes held, not a 0%.
+    const held = record.totalHeld > 0;
     items.push({
       id: `attendance:${code}:${record.type}`,
-      title: `${code} attendance · ${record.percentage}%`,
-      subtitle: `${record.attended}/${record.totalHeld} ${COURSE_LABEL[record.type] ?? 'classes'} held · ${record.category}`,
+      title: held ? `${code} attendance · ${attendancePercentLabel(record.percentage)}%` : `${code} attendance`,
+      subtitle: held
+        ? `${record.attended}/${record.totalHeld} ${COURSE_LABEL[record.type] ?? 'classes'} held · ${record.percentage >= targetPercent ? 'meets' : 'below'} your ${targetPercent}%`
+        : `No ${COURSE_LABEL[record.type] ?? 'classes'} held yet`,
       category: 'Attendance',
       tab: 'academics',
       keywords: [record.courseTitle, record.facultyName, record.slot, record.venue, 'bunk safe skip'].filter(Boolean).join(' ').toLowerCase(),
@@ -139,7 +157,7 @@ export function buildPaletteIndex(input: PaletteIndexInput, mode: FeatureMode = 
     items.push({
       id: `exam:${exam.id || `${code}-${exam.examType}-${index}`}`,
       title: `${exam.examType} · ${code}`,
-      subtitle: `${exam.date}${exam.time ? ` · ${exam.time}` : ''}${exam.venue ? ` · ${exam.venue}` : ''}${exam.seatNo ? ` · Seat ${exam.seatNo}` : ''}`,
+      subtitle: `${exam.date}${isReal(exam.time) ? ` · ${exam.time.trim()}` : ''}${isReal(exam.venue) ? ` · ${exam.venue.trim()}` : ''}${isReal(exam.seatNo) ? ` · Seat ${exam.seatNo.trim()}` : ''}`,
       category: 'Exam',
       tab: 'exams',
       keywords: [exam.courseTitle, exam.slot, exam.venue, exam.examType].filter(Boolean).join(' ').toLowerCase(),
@@ -178,7 +196,13 @@ export function buildPaletteIndex(input: PaletteIndexInput, mode: FeatureMode = 
     });
   });
 
-  return items;
+  // The synced records above are navigation too — a course row opens the
+  // timetable, an exam row opens the seating chart. Filtering only the "Go to"
+  // block left minimal mode able to offer a screen it had just removed from the
+  // rail, so the whole index passes through the same gate. What survives is
+  // exactly what a minimal student can act on: attendance rows (→ Attendance)
+  // and marks rows (→ Marks & Grades).
+  return items.filter((item) => !isNavHiddenInMode(item.tab, mode));
 }
 
 export interface PaletteSearchHit extends PaletteItem {

@@ -7,8 +7,9 @@
  * Search is AND-multi-token and prefix matches outrank substring matches.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { AttendanceRecord, CourseMarks, ExamSchedule, TimetableSlot } from '../../types';
+import { saveTargetAttendance } from '../settings';
 import { buildPaletteIndex, searchPalette } from '../commandPalette';
 
 const timetable: TimetableSlot[] = [
@@ -28,12 +29,12 @@ const attendance: AttendanceRecord[] = [
   {
     courseCode: 'CSE1012', courseTitle: 'Data Structures', type: 'TH', slot: 'A1+A2',
     facultyName: 'Dr. Ramesh', attended: 20, totalHeld: 24, percentage: 83,
-    category: 'Safe', lastUpdated: '2026-09-14', venue: 'SJT-204',
+    lastUpdated: '2026-09-14', venue: 'SJT-204',
   },
   {
     courseCode: 'MAT1001', courseTitle: 'Calculus', type: 'ETH', slot: 'B1',
     facultyName: 'Dr. Iyer', attended: 9, totalHeld: 14, percentage: 64,
-    category: 'Critical', lastUpdated: '2026-09-14', venue: 'AB2-110',
+    lastUpdated: '2026-09-14', venue: 'AB2-110',
   },
 ];
 
@@ -93,6 +94,66 @@ describe('buildPaletteIndex', () => {
     expect(bunk!.keywords).toContain('bunk');
     const mess = items.find((i) => i.id === 'go:hostel');
     expect(mess!.keywords).toContain('mess');
+  });
+});
+
+describe('the attendance verdict speaks the student’s own bar', () => {
+  // ⌘K used to print a Safe / Warning / Critical word that the sync had stamped
+  // onto the record from a band frozen at 80 / 75. With the Academics slider on
+  // 85%, one course at 83% read "Safe" in this list and "attend 3 in a row" on
+  // the card one screen below it — two bars, one student.
+  const TARGET_KEY = 'ultracc.targetAttendance';
+
+  afterEach(() => { localStorage.removeItem(TARGET_KEY); });
+
+  const item = (code: string) => index().find((i) => i.id.startsWith(`attendance:${code}`));
+
+  it('quotes the saved target against the live percentage', () => {
+    saveTargetAttendance(85);
+    expect(item('CSE1012')!.subtitle).toContain('below your 85%'); // 83%
+    expect(item('MAT1001')!.subtitle).toContain('below your 85%'); // 64%
+  });
+
+  it('calls the same course a pass once the bar drops under it', () => {
+    saveTargetAttendance(75);
+    expect(item('CSE1012')!.subtitle).toContain('meets your 75%');
+    expect(item('MAT1001')!.subtitle).toContain('below your 75%');
+  });
+
+  it('falls back to VTOP’s own bar for a student who never moved the slider', () => {
+    localStorage.removeItem(TARGET_KEY);
+    expect(item('CSE1012')!.subtitle).toContain('meets your 75%');
+  });
+
+  it('answers with the bar the caller renders, when it passes one', () => {
+    // ⌘K mounts once and stays mounted, so it hands its own live reading to the
+    // index instead of trusting whatever this function last happened to see.
+    saveTargetAttendance(75);
+    const threaded = buildPaletteIndex({ timetable, attendance, exams, marks, targetAttendance: 90 });
+    const spoken = threaded.find((i) => i.id.startsWith('attendance:CSE1012'))!;
+    expect(spoken.subtitle).toContain('below your 90%');
+    expect(spoken.subtitle).not.toContain('75');
+  });
+
+  it('never writes a frozen verdict word into the index', () => {
+    saveTargetAttendance(95);
+    const spoken = index()
+      .filter((i) => i.id.startsWith('attendance:'))
+      .map((i) => `${i.title} ${i.subtitle}`);
+    expect(spoken.length).toBeGreaterThan(0);
+    for (const text of spoken) expect(text).not.toMatch(/\b(Safe|Warning|Critical)\b/);
+  });
+
+  it('says a course has held nothing yet instead of calling it 0% and below target', () => {
+    const fresh = buildPaletteIndex({
+      timetable,
+      exams,
+      marks,
+      attendance: [{ ...attendance[0], attended: 0, totalHeld: 0, percentage: 0 }],
+    });
+    const started = fresh.find((i) => i.id.startsWith('attendance:CSE1012'))!;
+    expect(started.title).toBe('CSE1012 attendance');
+    expect(started.subtitle).toBe('No Theory held yet');
   });
 });
 

@@ -20,9 +20,12 @@
  */
 
 import type { TimetableSlot } from '../types';
+import { formatClassTime, timetableTimeToMinutes } from '../utils/timetableGrid';
 import { computeQuizTriggers } from './lms/notifications';
 import type { LmsQuizWindow } from './lms/types';
 import { makeDeviceCode } from './phoneIdentity';
+import { localDateIso } from '../utils/localDate';
+import { MILLISECONDS_IN_A_DAY } from '../utils/examUtils';
 import { callBackendRpc, BackendError } from './communityBackend';
 import { debugErrorDetail, humanErrorCopy } from './errorCopy';
 
@@ -53,26 +56,16 @@ export const PUSH_LEAD_MINUTES = 10;
 export const PUSH_HORIZON_DAYS = 7;
 export const PUSH_MAX_REMINDERS = 200;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
-function isoDay(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+/**
+ * The device's own day, for a reminder id that must not repeat the same
+ * class twice in one morning. `localDateIso` is the one place that writes it.
+ */
+const isoDay = (ts: number): string => localDateIso(new Date(ts));
 
 function clockLabel(value: string): string {
-  const match = (value || '').match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return value || '';
-  const hour = Number(match[1]);
-  return `${hour % 12 || 12}:${match[2]} ${hour >= 12 ? 'PM' : 'AM'}`;
-}
-
-function toMinutes(value: string): number | null {
-  const match = (value || '').match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
+  return formatClassTime(value, value || '');
 }
 
 /**
@@ -104,13 +97,13 @@ export function buildPushPlan(input: PushPlanInput): PushReminder[] {
   }
 
   for (let offset = 0; offset <= horizonDays; offset += 1) {
-    const dayStart = new Date(startOfToday.getTime() + offset * DAY_MS);
+    const dayStart = new Date(startOfToday.getTime() + offset * MILLISECONDS_IN_A_DAY);
     const weekday = WEEKDAYS[dayStart.getDay()];
     const slots = byDay.get(weekday);
     if (!slots) continue;
 
     for (const slot of slots) {
-      const minutes = toMinutes(slot.startTime);
+      const minutes = timetableTimeToMinutes(slot.startTime);
       if (minutes === null) continue;
       const classStart = new Date(dayStart.getTime() + minutes * 60 * 1000);
       const at = classStart.getTime() - leadMinutes * 60 * 1000;
@@ -182,24 +175,18 @@ export function getPushDeviceCode(): string {
 const ENABLED_KEY = 'ultracc.push.enabled';
 
 /**
- * The deployment's VAPID public key.
+ * Your deployment's VAPID public key, injected at build time.
  *
- * A VAPID public key is *designed* to be public — every browser sends it back
- * in its own PushSubscription — so it is safe to keep as a code default. That
- * makes background notifications work on a fresh deployment without any build
- * environment setup; the matching PRIVATE key stays a server-side secret
- * (edge function secret VAPID_PRIVATE_KEY, never in this repo).
- *
- * Rotate both values together (`npm run vapid`) and set VITE_VAPID_PUBLIC_KEY
- * if you prefer to inject it at build time instead.
+ * Generate a pair with `npm run vapid`, keep the private half in the
+ * push-dispatch function's VAPID_PRIVATE_KEY secret, and set the public half as
+ * VITE_VAPID_PUBLIC_KEY. With neither set, background notifications report
+ * themselves as unconfigured instead of subscribing the browser to a keypair
+ * this build does not control.
  */
-export const DEFAULT_VAPID_PUBLIC_KEY =
-  'BNp3bQ5AGtRuQqc3RzB5MBICVievsPT8g0WFkKYFWrtjm0PMT9sbyQVuyrfl4_8wLZAdnm3AjTHozI96tFITcZ4';
-
 export function pushPublicKey(): string | null {
   const env = (import.meta as unknown as { env?: Record<string, string> }).env;
   const value = env?.VITE_VAPID_PUBLIC_KEY;
-  return value && value.trim() ? value.trim() : DEFAULT_VAPID_PUBLIC_KEY;
+  return value && value.trim() ? value.trim() : null;
 }
 
 export function pushSupported(): boolean {
@@ -337,7 +324,7 @@ export async function enableBackgroundPush(plan: PushReminder[]): Promise<Enable
   }
   const publicKey = pushPublicKey();
   if (!publicKey) {
-    debugErrorDetail('push-backend', 'VITE_PUSH_PUBLIC_KEY (the server VAPID public key) is not configured for this deployment');
+    debugErrorDetail('push-backend', 'VITE_VAPID_PUBLIC_KEY (the VAPID public key) is not set for this build');
     return {
       ok: false,
       reason: 'Background reminders aren\'t available yet, so UltraCC can only notify you while it is open.',

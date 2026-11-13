@@ -2,14 +2,15 @@
  * Campus abstraction layer.
  *
  * UltraCC is a multi-campus-capable VIT student OS. Each campus carries its
- * own VTOP host, timetable slot map, and service availability. Today only
- * Chennai (vtopcc) is live-verified end-to-end; the other campuses are wired
- * with their official hosts so the SAME frontend/gateway can target them
- * without code changes — their parsers/slot maps are marked UNVERIFIED until
- * a live pass confirms the HTML is identical (it is not guaranteed).
+ * own VTOP host and service availability. Today only Chennai (vtopcc) is
+ * live-verified end-to-end; the other campuses are wired with their official
+ * hosts so the SAME frontend/gateway can target them without code changes —
+ * their parsers are marked UNVERIFIED until a live pass confirms the HTML is
+ * identical (it is not guaranteed).
  *
- * Never hardcode a VTOP host or slot time inside a parser/component — read it
- * from the active campus config.
+ * Never hardcode a VTOP host inside a component — read it from the active
+ * campus config. Timetable times are the exception, and deliberately so: see
+ * the note at the foot of this file.
  */
 
 export type CampusId = 'chennai' | 'vellore' | 'ap' | 'bhopal';
@@ -22,7 +23,9 @@ export interface CampusConfig {
   vtopHost: string;
   /** Display label used across the UI. */
   label: string;
-  /** True when the full pipeline (login -> session -> parsers) is live-verified. */
+  /** True when the full pipeline (login -> session -> parsers) is live-verified.
+   *  The UI surfaces this as "available": a student may only pick a campus UltraCC
+   *  can actually sign in to, so the flag also gates the Settings control. */
   verified: boolean;
   /** Whether day-scholar bus routes are available as a dataset. */
   transportAvailable: boolean;
@@ -49,7 +52,7 @@ export const CAMPUSES: Record<CampusId, CampusConfig> = {
     label: 'VIT Vellore',
     verified: false,
     transportAvailable: false,
-    note: 'Host configured; parsers not yet live-verified for Vellore HTML.',
+    note: 'Sign-in for Vellore is not available yet.',
   },
   ap: {
     id: 'ap',
@@ -59,7 +62,7 @@ export const CAMPUSES: Record<CampusId, CampusConfig> = {
     label: 'VIT AP',
     verified: false,
     transportAvailable: false,
-    note: 'Host configured; parsers not yet live-verified for AP HTML.',
+    note: 'Sign-in for AP is not available yet.',
   },
   bhopal: {
     id: 'bhopal',
@@ -69,7 +72,7 @@ export const CAMPUSES: Record<CampusId, CampusConfig> = {
     label: 'VIT Bhopal',
     verified: false,
     transportAvailable: false,
-    note: 'Host configured; parsers not yet live-verified for Bhopal HTML.',
+    note: 'Sign-in for Bhopal is not available yet.',
   },
 };
 
@@ -84,64 +87,53 @@ export const CAMPUS_LIST: CampusConfig[] = [
   CAMPUSES.bhopal,
 ];
 
-// ---------------------------------------------------------------------------
-// Timetable slot maps (per campus).
-// ---------------------------------------------------------------------------
+/** Where the student's campus choice is kept on this device. */
+export const CAMPUS_STORAGE_KEY = 'ultracc:campus';
 
-export interface SlotDef {
-  /** Slot code as VTOP serves it (e.g. "A1"). */
-  code: string;
-  start: string; // "08:00"
-  end: string;   // "08:50"
+/**
+ * The saved campus, or the verified one when nothing is stored.
+ *
+ * Storage is unreadable in an installed PWA with site data blocked and in iOS
+ * private windows, and the Settings campus list asks this question for every
+ * row while it renders — so a refusal answers "nothing chosen here" instead of
+ * taking the whole modal down.
+ */
+export function readStoredCampusId(): CampusId {
+  try {
+    const raw = localStorage.getItem(CAMPUS_STORAGE_KEY);
+    return raw && raw in CAMPUSES ? (raw as CampusId) : ACTIVE_CAMPUS_ID;
+  } catch {
+    return ACTIVE_CAMPUS_ID;
+  }
 }
 
 /**
- * VIT Chennai slot map — the verified default. Keyed by the slot codes VTOP
- * Chennai actually serves (A1..F2 + T slots). T slots are tutorial classes;
- * L slots are labs handled by the timetable parser itself.
+ * Remember the campus choice. Returns false when the device refuses to store
+ * it, which tells the caller a reload would land back where it started.
  */
-const CHENNAI_SLOT_MAP: Record<string, SlotDef> = {
-  A1: { code: 'A1', start: '08:00', end: '08:50' },
-  A2: { code: 'A2', start: '09:00', end: '09:50' },
-  B1: { code: 'B1', start: '10:00', end: '10:50' },
-  B2: { code: 'B2', start: '11:00', end: '11:50' },
-  C1: { code: 'C1', start: '12:00', end: '12:50' },
-  C2: { code: 'C2', start: '13:00', end: '13:50' },
-  D1: { code: 'D1', start: '14:00', end: '14:50' },
-  D2: { code: 'D2', start: '15:00', end: '15:50' },
-  E1: { code: 'E1', start: '16:00', end: '16:50' },
-  E2: { code: 'E2', start: '17:00', end: '17:50' },
-  F1: { code: 'F1', start: '18:00', end: '18:50' },
-  F2: { code: 'F2', start: '19:00', end: '19:50' },
-  TA1: { code: 'TA1', start: '08:00', end: '08:50' },
-  TA2: { code: 'TA2', start: '09:00', end: '09:50' },
-  TB1: { code: 'TB1', start: '10:00', end: '10:50' },
-  TB2: { code: 'TB2', start: '11:00', end: '11:50' },
-  TC1: { code: 'TC1', start: '12:00', end: '12:50' },
-  TC2: { code: 'TC2', start: '13:00', end: '13:50' },
-  TD1: { code: 'TD1', start: '14:00', end: '14:50' },
-  TD2: { code: 'TD2', start: '15:00', end: '15:50' },
-  TE1: { code: 'TE1', start: '16:00', end: '16:50' },
-  TE2: { code: 'TE2', start: '17:00', end: '17:50' },
-};
+export function writeStoredCampusId(id: CampusId): boolean {
+  try {
+    localStorage.setItem(CAMPUS_STORAGE_KEY, id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Timetable slot times
+// ---------------------------------------------------------------------------
 
 /**
- * Vellore/AP/Bhopal slot maps are NOT assumed identical to Chennai. Each has
- * an empty map placeholder that must be filled from a live-verified pass
- * before that campus can be activated. This is deliberate: guessing slot
- * times would fabricate timetable data.
+ * There is deliberately no slot-time table here. A VIT Chennai slot letter does
+ * not carry one fixed time: the letters rotate per weekday (C1 meets 08:00 on
+ * Wednesday and 08:55 on Friday) and VTOP files a lecture together with its
+ * tutorial in a single cell ("A1+TA1"), so a flat letter→time map in this file
+ * was both unused and wrong the moment it was written.
+ *
+ * The times a student sees come from VTOP's own timetable cells. Only when a
+ * row ships without them does
+ * `src/lib/vtop/parsers/timetable.ts` supply the day-wise grid from the FFCS
+ * schedule, and every screen reads the resulting startTime/endTime off the row
+ * rather than looking a letter up.
  */
-const UNVERIFIED_SLOT_MAP: Record<string, SlotDef> = {};
-
-export const CAMPUS_SLOT_MAPS: Record<CampusId, Record<string, SlotDef>> = {
-  chennai: CHENNAI_SLOT_MAP,
-  vellore: UNVERIFIED_SLOT_MAP,
-  ap: UNVERIFIED_SLOT_MAP,
-  bhopal: UNVERIFIED_SLOT_MAP,
-};
-
-/** Resolve a slot code to its time window for the active campus ('' when unknown). */
-export function slotTimeFor(slot: string, campus: CampusId = ACTIVE_CAMPUS_ID): { start: string; end: string } | null {
-  const def = CAMPUS_SLOT_MAPS[campus]?.[(slot || '').trim().toUpperCase()];
-  return def ? { start: def.start, end: def.end } : null;
-}
