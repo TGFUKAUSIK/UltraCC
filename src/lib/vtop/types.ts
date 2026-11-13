@@ -198,6 +198,16 @@ export interface GradeHistory {
   effectiveGrades: EffectiveGrade[];
 }
 
+/** One date-wise attendance row from VTOP's per-class detail page. */
+export interface AttendanceDateRow {
+  /** VTOP's date cell, "DD-MMM-YYYY" (e.g. "01-AUG-2026"). */
+  date: string;
+  /** VTOP's "Day And Timing" cell (e.g. "09:00-09:50"). */
+  timing: string;
+  /** VTOP's status cell ("Present" / "Absent" / "On Duty" / …). */
+  status: string;
+}
+
 /** Per-course OD totals from the per-class attendance detail page. */
 export interface OdEntry {
   courseCode: string;
@@ -209,13 +219,26 @@ export interface OdEntry {
   present: number;
   absent: number;
   total: number;
+  /**
+   * Date-wise attendance for this class, in VTOP's own order. The same detail
+   * page that yields the OD counts also carries the Date/Day-timing/Status
+   * columns; surfacing them here gives the Attendance view its class-by-class
+   * record without inventing any date.
+   */
+  dates: AttendanceDateRow[];
 }
 
 export interface OdSummary {
   /** false = VTOP exposes no OD data for this student (never shown as 0). */
   available: boolean;
-  /** VIT's semester cap (public policy: 40 class-hours). */
-  limitHours: number;
+  /**
+   * VIT's semester cap on on-duty hours, as the gateway reports it (public
+   * policy: 40 class-hours). `null` when the response carries no cap: the client
+   * used to answer 40 itself, which quietly copied a policy number into a second
+   * place and printed a denominator nothing had measured. A surface with no cap
+   * says how many hours are used and leaves the fraction out.
+   */
+  limitHours: number | null;
   totalOdHours: number;
   perCourse: OdEntry[];
 }

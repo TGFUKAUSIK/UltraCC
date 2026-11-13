@@ -28,6 +28,12 @@ import {
   summarizePhotoDiag,
 } from './photo.ts';
 import {
+  captchaBase64,
+  NO_PREDICTION,
+  solveCaptchaImage,
+} from './captchaOcr.ts';
+import type { CaptchaPrediction, DecodedImage } from './captchaOcr.ts';
+import {
   requestWithJar,
   buildSessionDiag,
   sessionJsidHash,
@@ -180,6 +186,10 @@ interface GatewayResponse {
   sessionToken?: string;
   // INITIALIZE_SESSION / FETCH_CAPTCHA
   captchaImageBase64?: string;
+  /** What the gateway read off that image, with the confidence it measured.
+   *  Absent (or empty with confidence 0) means no guess: the student types it. */
+  captchaText?: string;
+  captchaConfidence?: number;
   // DO_LOGIN
   loginSuccess?: boolean;
   loginError?: string;
@@ -862,21 +872,39 @@ function sleep(ms: number): Promise<void> {
 // parser rejects a page.
 
 // ---------------------------------------------------------------------------
-// CAPTCHA OCR — lightweight server-side heuristic (pixel-density analysis on
-// the raw base64 image). Confidence is always < 1.0, so the UI shows the image
-// for manual override.
+// CAPTCHA reading — the same template engine the browser runs (see
+// captchaTemplate.ts, which src/lib/vtop re-exports), fed by a server-side
+// JPEG decode instead of a canvas.
 // ---------------------------------------------------------------------------
 
 /**
- * Attempt heuristic OCR on a VTOP CAPTCHA data URI.
- * Returns { text, confidence } — confidence is MEASURED, not assumed.
+ * Read the CAPTCHA VTOP armed the session with.
  *
- * The placeholder returns an empty string (manual entry) until a real model is
- * available; the edge function still returns the image for the student.
+ * Returns `{ text: '', confidence: 0 }` whenever the image cannot be trusted —
+ * a different geometry, a format the decoder rejects, a truncated body. That is
+ * not a failure: it means "the student types it", exactly the flow before this
+ * existed. Confidence is MEASURED from the model, never assumed, and the client
+ * decides how much of it is enough to submit on the student's behalf.
+ *
+ * Why here rather than in the phone app: tesseract.js — the web app's second
+ * opinion — is a WASM Web Worker and cannot run in React Native. Solving on the
+ * server gives the mobile login the same automatic CAPTCHA as the web without
+ * shipping a JPEG decoder and 400 KB of glyph weights to the device.
  */
-async function attemptCaptchaOcr(_dataUri: string): Promise<{ text: string; confidence: number }> {
-  // No prediction: manual entry is the primary flow.
-  return { text: '', confidence: 0 };
+async function attemptCaptchaOcr(dataUri: string): Promise<CaptchaPrediction> {
+  // A VTOP CAPTCHA is about 4 KB of base64. Anything orders of magnitude
+  // larger is not one, and decoding it would be free work for an upstream
+  // that has started serving something else.
+  if (!dataUri || captchaBase64(dataUri).length > 200_000) return NO_PREDICTION;
+  try {
+    const jpeg = await import('npm:jpeg-js');
+    const decode = (jpeg.default?.decode ?? jpeg.decode) as (bytes: Uint8Array) => DecodedImage;
+    return solveCaptchaImage(dataUri, decode);
+  } catch (err: unknown) {
+    // A missing decoder or a decode crash must never surface as a login error.
+    console.error('[vtop-gateway] CAPTCHA reading failed:', err instanceof Error ? err.message : String(err));
+    return NO_PREDICTION;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -960,10 +988,20 @@ async function handleInitializeSession(campus?: string): Promise<GatewayResponse
   const state: SessionState = { cookie: arm.cookie, csrf: arm.csrf, authorizedId: '', jsidHash, campus };
   const token = await encryptSession(state);
   const diag = await buildSessionDiag(arm.cookie, arm.csrf, jsidHash);
-  return { ok: true, action: 'INITIALIZE_SESSION', sessionToken: token, captchaImageBase64: arm.captchaUri, ...ocr, diag };
+  return {
+    ok: true,
+    action: 'INITIALIZE_SESSION',
+    sessionToken: token,
+    captchaImageBase64: arm.captchaUri,
+    captchaText: ocr.text,
+    captchaConfidence: ocr.confidence,
+    diag,
+  };
 }
 
-async function handleFetchCaptcha(session: SessionState): Promise<{ newToken: string; captchaImageBase64: string; diag: SessionDiag }> {
+async function handleFetchCaptcha(
+  session: SessionState,
+): Promise<{ newToken: string; captchaImageBase64: string; captchaText: string; captchaConfidence: number; diag: SessionDiag }> {
   // GET /vtop/get/new/captcha — returns a fresh captcha fragment. Uses the
   // SAME jar as the armed session — no new session is created.
   const res = await vtopGet(ALLOWED_ENDPOINTS.newCaptcha, session.cookie, session.campus);
@@ -978,7 +1016,16 @@ async function handleFetchCaptcha(session: SessionState): Promise<{ newToken: st
   const newState: SessionState = { ...session, cookie: res.cookie || session.cookie };
   const newToken = await encryptSession(newState);
   const diag = await buildSessionDiag(newState.cookie, newState.csrf, newState.jsidHash);
-  return { newToken, captchaImageBase64: captchaUri, diag };
+  // A refresh is exactly the moment the student is looking at a code they
+  // cannot read, so the fresh image is solved too.
+  const ocr = await attemptCaptchaOcr(captchaUri);
+  return {
+    newToken,
+    captchaImageBase64: captchaUri,
+    captchaText: ocr.text,
+    captchaConfidence: ocr.confidence,
+    diag,
+  };
 }
 
 async function handleDoLogin(
@@ -1293,7 +1340,18 @@ async function handleFetchData(
         unavailable = c.totals.creditsRequired === 0 && c.distributionTypes.length === 0 && c.baskets.length === 0;
         break;
       }
-      default:            data = [];
+      default: {
+        // Every target in endpointMap has a case above. Reaching here means one
+        // was added without its parser — and answering `[]` would read to the
+        // client as "VTOP says you have none of these", so the sync replaced a
+        // perfectly good cached dataset with nothing. Say it is not wired.
+        return {
+          ok: false,
+          action: 'FETCH_DATA',
+          notAvailable: true,
+          error: `This build does not read ${target} yet.`,
+        };
+      }
     }
   } catch (err: unknown) {
     if (err instanceof ParseError) {
@@ -1419,6 +1477,7 @@ async function handleFetchOd(session: SessionState, semesterId?: string): Promis
       present: counts.present,
       absent: counts.absent,
       total: counts.total,
+      dates: counts.dates,
     });
   }
 
@@ -2236,6 +2295,8 @@ Deno.serve(async (req: Request) => {
           ok: true, action,
           sessionToken: result.newToken,
           captchaImageBase64: result.captchaImageBase64,
+          captchaText: result.captchaText,
+          captchaConfidence: result.captchaConfidence,
           diag: result.diag,
         }, origin, action);
       }

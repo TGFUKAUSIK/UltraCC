@@ -85,7 +85,7 @@ async function decryptAsReceiver(
 }
 
 /** A real generated pair — the same thing scripts/generate-vapid-keys.mjs prints. */
-const vapid: VapidConfig = { ...(await generateVapidKeys(nodeCrypto)), subject: 'mailto:admin@ultracc.app' };
+const vapid: VapidConfig = { ...(await generateVapidKeys(nodeCrypto)), subject: 'mailto:admin@example.com' };
 
 describe('RFC 8291 payload encryption', () => {
   it('round-trips a JSON reminder through a browser-style receiver', async () => {

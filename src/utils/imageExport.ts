@@ -12,6 +12,8 @@
  */
 
 import type { PrintableTimetableRow, PrintableAttendanceRow } from './printExport';
+import { attendanceBandColor, attendanceColourKey } from './attendanceColour';
+import { attendancePercentLabel } from './attendanceBands';
 
 // ---------------------------------------------------------------------------
 // Document model (pure)
@@ -202,24 +204,29 @@ export function buildAttendanceImageDoc(rows: PrintableAttendanceRow[], meta: Im
   const commands: ImageCommand[] = [];
   const b: Builder = { commands, y: 0 };
   const overall = rows.length
-    ? Math.round((rows.reduce((s, r) => s + r.attended, 0) / Math.max(1, rows.reduce((s, r) => s + r.total, 0))) * 100)
+    ? (rows.reduce((s, r) => s + r.attended, 0) / Math.max(1, rows.reduce((s, r) => s + r.total, 0))) * 100
     : undefined;
   const parts: string[] = [];
   if (meta.regNo) parts.push(`Reg. No ${meta.regNo}`);
-  if (overall !== undefined) parts.push(`Overall ${overall}%`);
+  if (overall !== undefined) parts.push(`Overall ${attendancePercentLabel(overall)}%`);
   const subtitle = parts.length ? `${parts.join(' · ')} · Generated` : 'Generated';
   pushHeader(b, 'Attendance Report', subtitle);
 
-  const pctColor = (p: number) => (p < 75 ? '#b91c1c' : p < 85 ? '#b45309' : '#15803d');
   const cols: Column<PrintableAttendanceRow>[] = [
     { header: 'Course', width: 13, cell: (r) => r.courseCode, weight: () => 700 },
     { header: 'Title', width: 37, cell: (r) => r.courseTitle },
     { header: 'Attended', width: 12, align: 'center', cell: (r) => `${r.attended}/${r.total}` },
-    { header: '%', width: 10, align: 'center', cell: (r) => `${r.percentage}%`, color: (r) => pctColor(r.percentage), weight: () => 700 },
+    { header: '%', width: 10, align: 'center', cell: (r) => `${attendancePercentLabel(r.percentage)}%`, color: (r) => attendanceBandColor(r.percentage), weight: () => 700 },
     { header: 'Faculty', width: 28, cell: (r) => r.faculty },
   ];
 
   pushTable(b, cols, rows.slice().sort((a, c) => a.percentage - c.percentage));
+  // The coloured column is a claim, so the image states the scale it was drawn
+  // on — a recipient with no app open cannot otherwise tell 79% "amber" from
+  // 79% "below the bar this student set".
+  b.y += 8;
+  commands.push({ kind: 'text', x: MARGIN, y: b.y + 14, text: attendanceColourKey(), size: 11, weight: 500, color: COLOR_SUB });
+  b.y += 22;
   pushFooter(b, commands);
   return { width: CANVAS_W, height: b.y + FOOTER_H, commands };
 }

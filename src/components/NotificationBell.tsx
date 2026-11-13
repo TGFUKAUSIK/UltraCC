@@ -8,7 +8,7 @@
  * the bell itself always works in-app.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Bell, BellRing, Settings2, X, AlertTriangle, CalendarDays, BookOpen, ClipboardList, PartyPopper, Clock } from 'lucide-react';
 import type { AssignmentRecord, AttendanceRecord, ExamRecord, CourseMarksRecord, TimetableSlot } from '../lib/vtop/types';
 import type { BackgroundPushController } from '../hooks/useBackgroundPush';
@@ -16,6 +16,7 @@ import {
   generateNotificationCandidates, deliverNotifications, loadNotificationPrefs, saveNotificationPrefs,
   markAllSeen, recordMarksSeen, ALL_CATEGORIES, NotificationCategory, NotificationCandidate, NotificationPrefs,
 } from '../lib/smartNotifications';
+import { getSavedEvents, subscribeSavedEvents } from '../lib/savedEvents';
 import { useEscapeKey } from '../hooks/useDialog';
 
 const CATEGORY_META: Record<NotificationCategory, { label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
@@ -33,13 +34,11 @@ interface Props {
   exams: ExamRecord[];
   marks: CourseMarksRecord[];
   timetable: TimetableSlot[];
-  /** Event Hub events (already fetched by the calendar view or app). */
-  campusEvents: Array<{ eid: string; title: string; date: string }>;
   /** Background push controller (enables reminders while UltraCC is closed). */
   backgroundPush?: BackgroundPushController;
 }
 
-export const NotificationBell: React.FC<Props> = ({ assignments, attendance, exams, marks, timetable, campusEvents, backgroundPush }) => {
+export const NotificationBell: React.FC<Props> = ({ assignments, attendance, exams, marks, timetable, backgroundPush }) => {
   const [open, setOpen] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [prefs, setPrefs] = useState<NotificationPrefs>(() => loadNotificationPrefs());
@@ -74,6 +73,10 @@ export const NotificationBell: React.FC<Props> = ({ assignments, attendance, exa
     setOpen(false);
     setShowPrefs(false);
   });
+
+  // Campus-event notices fire only for events the student explicitly saved —
+  // never for the whole Event Hub feed. `savedEvents` is the reactive store.
+  const campusEvents = useSyncExternalStore(subscribeSavedEvents, getSavedEvents);
 
   const candidates = useMemo(
     () => generateNotificationCandidates({
@@ -146,63 +149,61 @@ export const NotificationBell: React.FC<Props> = ({ assignments, attendance, exa
       >
         <Bell size={18} />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-rose-50 text-[10px] font-bold flex items-center justify-center">
-            {unread > 9 ? '9+' : unread}
-          </span>
+          <span className="uc-bell-badge">{unread > 9 ? '9+' : unread}</span>
         )}
       </button>
 
       {open && (
-        <div id="ultracc-notification-panel" className="absolute right-0 top-10 z-50 w-80 max-w-[calc(100vw-2rem)] bg-white border border-zinc-200 rounded-2xl shadow-2xl overflow-hidden" role="region" aria-label="Notifications">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200">
+        <div id="ultracc-notification-panel" className="uc-bell" role="region" aria-label="Notifications">
+          <header className="uc-bell-head">
             {showPrefs ? (
               <>
-                <span className="text-xs font-extrabold text-zinc-900">Notification preferences</span>
-                <button onClick={() => setShowPrefs(false)} className="p-1 rounded-lg hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700" aria-label="Back to notifications"><X size={14} /></button>
+                <span className="uc-bell-title">Notification preferences</span>
+                <button type="button" onClick={() => setShowPrefs(false)} className="uc-dir-ico" aria-label="Back to notifications" title="Back"><X size={14} aria-hidden="true" /></button>
               </>
             ) : (
               <>
-                <span className="text-xs font-extrabold text-zinc-900">Notifications</span>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setShowPrefs(true)} className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700" aria-label="Notification preferences" title="Preferences"><Settings2 size={14} /></button>
-                  <button onClick={onMarkRead} className="p-1.5 rounded-lg hover:bg-zinc-100 text-zinc-500 hover:text-zinc-700 text-[10px] font-bold" title="Mark all as read">Mark read</button>
+                <span className="uc-bell-title">Notifications</span>
+                <div className="uc-bell-tools">
+                  <button type="button" onClick={() => setShowPrefs(true)} className="uc-dir-ico" aria-label="Notification preferences" title="Preferences"><Settings2 size={14} aria-hidden="true" /></button>
+                  <button type="button" onClick={onMarkRead} className="uc-bell-mark" title="Mark all as read">Mark read</button>
                 </div>
               </>
             )}
-          </div>
+          </header>
 
           {showPrefs ? (
-            <div className="p-3 space-y-1">
+            <div className="uc-bell-prefs">
               {permission === 'default' && (
-                <div className="mb-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                  <p className="text-[11px] font-bold text-blue-700">Get reminders outside the app</p>
-                  <p className="text-[10px] text-blue-700/80 mt-0.5">Allow system notifications to receive class reminders (~10 min before) and LMS quiz alerts even when this tab is in the background.</p>
-                  <button onClick={() => void enableOsNotifications()} className="mt-2 px-3 py-1.5 rounded-lg acc-bg text-zinc-900 text-[10px] font-extrabold cursor-pointer">Enable notifications</button>
+                <div className="uc-bell-callout">
+                  <p className="uc-bell-callout-title">Get reminders outside the app</p>
+                  <p className="uc-bell-callout-note">Allow system notifications to receive class reminders (~10 min before) and LMS quiz alerts even when this tab is in the background.</p>
+                  <button type="button" onClick={() => void enableOsNotifications()} className="uc-dir-go acc-bg uc-bell-callout-act">Enable notifications</button>
                 </div>
               )}
-              <label className="flex items-center justify-between px-2 py-2 rounded-xl hover:bg-zinc-50 cursor-pointer">
-                <span className="text-xs font-bold text-zinc-800">All notifications</span>
+              <label className="uc-bell-pref">
+                <span>All notifications</span>
                 <input type="checkbox" checked={prefs.enabled} onChange={() => {
                   const next = { ...prefs, enabled: !prefs.enabled };
                   setPrefs(next); saveNotificationPrefs(next);
-                }} className="accent-blue-600" />
+                }} />
               </label>
-              <div className="pt-1 border-t border-zinc-100">
+              <div className="uc-bell-div">
                 {ALL_CATEGORIES.map((cat) => {
                   const meta = CATEGORY_META[cat];
                   return (
-                    <label key={cat} className="flex items-center justify-between px-2 py-2 rounded-xl hover:bg-zinc-50 cursor-pointer">
-                      <span className="text-[11px] text-zinc-600 flex items-center gap-2"><meta.icon size={13} className="text-zinc-500" /> {meta.label}</span>
-                      <input type="checkbox" checked={prefs.categories[cat] !== false} onChange={() => toggleCategory(cat)} className="accent-blue-600" />
+                    <label key={cat} className="uc-bell-pref">
+                      <span><meta.icon size={13} /> {meta.label}</span>
+                      <input type="checkbox" checked={prefs.categories[cat] !== false} onChange={() => toggleCategory(cat)} />
                     </label>
                   );
                 })}
               </div>
               {backgroundPush && (
-                <div className="pt-1 border-t border-zinc-100">
-                  <label className="flex items-center justify-between px-2 py-2 rounded-xl hover:bg-zinc-50 cursor-pointer">
-                    <span className="text-[11px] text-zinc-600 flex items-center gap-2">
-                      <BellRing size={13} className="text-zinc-500" /> Even when UltraCC is closed
+                <div className="uc-bell-div">
+                  <label className="uc-bell-pref">
+                    <span>
+                      <BellRing size={13} aria-hidden="true" /> Even when UltraCC is closed
                     </span>
                     <input
                       type="checkbox"
@@ -210,10 +211,9 @@ export const NotificationBell: React.FC<Props> = ({ assignments, attendance, exa
                       checked={backgroundPush.enabled}
                       disabled={backgroundPush.busy || !backgroundPush.supported || !backgroundPush.configured || backgroundPush.permission === 'denied'}
                       onChange={() => void backgroundPush.toggle()}
-                      className="accent-blue-600"
                     />
                   </label>
-                  <p className="text-[10px] text-zinc-500 px-2 pb-1 leading-relaxed">
+                  <p className="uc-bell-tip">
                     {backgroundPush.message
                       ?? (!backgroundPush.supported
                         ? 'This browser cannot receive background notifications.'
@@ -225,32 +225,32 @@ export const NotificationBell: React.FC<Props> = ({ assignments, attendance, exa
                               ? `On · ${backgroundPush.upcoming} reminders scheduled on the server.`
                               : 'Off — class and quiz reminders only arrive while UltraCC is open.')}
                     {backgroundPush.enabled && backgroundPush.healthNote && (
-                      <span className="block mt-0.5 acc-text font-semibold">{backgroundPush.healthNote}</span>
+                      <span className="uc-bell-health acc-text">{backgroundPush.healthNote}</span>
                     )}
                   </p>
                 </div>
               )}
-              <p className="text-[10px] text-zinc-500 px-2 pt-2">Each notice fires once per device. Only the reminder times above are uploaded — never marks, attendance or credentials.</p>
+              <p className="uc-bell-tip">Each notice fires once per device. Only the reminder times above are uploaded — never marks, attendance or credentials.</p>
             </div>
           ) : (
-            <div className="max-h-80 overflow-y-auto">
+            <div className="uc-bell-log">
               {visible.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <Bell size={22} className="mx-auto text-zinc-900 mb-2" />
-                  <p className="text-xs text-zinc-600">You're all caught up.</p>
-                  <p className="text-[10px] text-zinc-500 mt-1">Due assignments, attendance risks, exams and new marks will appear here.</p>
+                <div className="uc-bell-empty">
+                  <Bell size={20} aria-hidden="true" />
+                  <b>You're all caught up.</b>
+                  <p>Due assignments, attendance risks, exams and new marks will appear here.</p>
                 </div>
               ) : (
-                <ul className="divide-y divide-zinc-100">
+                <ul className="uc-bell-list">
                   {visible.map((c) => {
                     const meta = CATEGORY_META[c.category];
-                    const tone = c.urgency === 'critical' ? 'text-rose-600' : c.urgency === 'warning' ? 'text-amber-600' : 'text-zinc-500';
+                    const tone = c.urgency === 'critical' ? ' is-critical' : c.urgency === 'warning' ? ' is-warn' : '';
                     return (
-                      <li key={c.id} className="px-4 py-3 flex gap-3">
-                        <meta.icon size={15} className={`shrink-0 mt-0.5 ${tone}`} />
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-zinc-900 truncate">{c.title}</p>
-                          <p className="text-[11px] text-zinc-500 mt-0.5">{c.body}</p>
+                      <li key={c.id} className="uc-bell-row">
+                        <meta.icon size={15} className={`uc-bell-ico${tone}`} />
+                        <div className="uc-bell-row-text">
+                          <p className="uc-bell-row-title">{c.title}</p>
+                          <p className="uc-bell-row-body">{c.body}</p>
                         </div>
                       </li>
                     );

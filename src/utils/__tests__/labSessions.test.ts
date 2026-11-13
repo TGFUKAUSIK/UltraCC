@@ -15,6 +15,7 @@ import {
   mergeConsecutiveLabPair,
   combineLabSessions,
   sessionPeriodCount,
+  periodsPerClass,
 } from '../labSessions';
 
 function theory(overrides: Partial<TimetableSlot> = {}): TimetableSlot {
@@ -73,6 +74,16 @@ describe('session duration', () => {
     const t = theory();
     expect(sessionDurationMinutes(t)).toBe(50);
     expect(sessionPeriodCount(t)).toBe(1);
+  });
+
+  it('counts the periods a class costs even when the row carries no clock', () => {
+    // Attendance rows have a slot but no start/end time. VTOP also shortens a
+    // lab's slot to its first token in the detail link, so `L31` must still
+    // cost two periods — the same fact sessionPeriodCount reads from 100 minutes.
+    expect(periodsPerClass({ slot: 'A1', courseType: 'ETH' })).toBe(1);
+    expect(periodsPerClass({ slot: 'L31+L32', courseType: 'ELA' })).toBe(2);
+    expect(periodsPerClass({ slot: 'L31', courseType: 'ELA' })).toBe(2);
+    expect(periodsPerClass({ slot: '', courseType: 'ELA' })).toBe(2);
   });
 
   it('combined 2-slot lab session = 100 minutes = 2 periods', () => {

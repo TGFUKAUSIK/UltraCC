@@ -57,15 +57,33 @@ describe('no scroll gesture can trigger a refresh', () => {
 
   it('handleRefresh is only reachable from explicit controls', () => {
     const app = readFileSync(APP, 'utf-8');
-    const lines = app.split('\n').filter((line) => /handleRefresh/.test(line));
-    expect(lines.length).toBeGreaterThan(0);
-    for (const line of lines) {
+    const lines = app.split('\n');
+
+    /*
+     * One delegate may reach it besides the buttons themselves: App's
+     * `requestSignIn`, the handler the header's Sign in button, the signed-out
+     * CTAs and the first-run step all share. Tapping "Sign in" — which reuses a
+     * saved VTOP login instead of re-asking for it — is as deliberate as tapping
+     * the refresh lamp, so it belongs on the same explicit-control list. The
+     * allowance is scoped to that single callback, so a `handleRefresh` call
+     * anywhere else (a scroll handler, say) still fails this guard.
+     */
+    const delegateStart = lines.findIndex((line) => /const requestSignIn = useCallback/.test(line));
+    expect(delegateStart, 'the requestSignIn delegate is missing from App.tsx').toBeGreaterThan(-1);
+    const delegateEnd = lines.findIndex((line, i) => i > delegateStart && /\},\s*\[handleRefresh\]\);/.test(line));
+    expect(delegateEnd, 'the requestSignIn delegate does not close over handleRefresh').toBeGreaterThan(delegateStart);
+    const inDelegate = (i: number) => i >= delegateStart && i <= delegateEnd;
+
+    const mentions = lines.map((line, i) => ({ line, i })).filter(({ line }) => /handleRefresh/.test(line));
+    expect(mentions.length).toBeGreaterThan(0);
+    for (const { line, i } of mentions) {
       const allowed =
         /const handleRefresh = useCallback/.test(line) ||
         /onManualRefresh=\{[^}]*handleRefresh/.test(line) ||
         /onRefresh[^\]]*handleRefresh/.test(line) ||
         /handleRefresh[,:]\s*handleRefresh/.test(line) ||
         /refresh: handleRefresh/.test(line) ||
+        inDelegate(i) ||
         /^\s*(\/\/|\*)/.test(line);
       expect(allowed, line.trim()).toBe(true);
     }
@@ -80,10 +98,15 @@ describe('no scroll gesture can trigger a refresh', () => {
 describe('native overscroll refresh stays pinned off', () => {
   const css = readFileSync(CSS, 'utf-8');
 
-  it('the mobile document rules set overscroll-behavior-y:none', () => {
-    const block = css.match(/@media \(max-width:768px\)\{[^}]*overscroll-behavior-y:none[^}]*\}/);
-    expect(block, 'no overscroll-behavior-y:none document rule found').toBeTruthy();
-    expect(block![0]).toMatch(/html,body/);
+  it('the document rules pin native overscroll refresh off', () => {
+    // This used to match a phone-only `overscroll-behavior-y: none` block. The
+    // document is an app frame at every width now — it never scrolls — so the
+    // guard follows the rule it moved to: a global `overscroll-behavior: none`
+    // on html/body, which is the same intent at equal-or-stronger scope.
+    const block = css.match(/html,\s*body\s*\{[^}]*\}/);
+    expect(block, 'the html/body document-frame rule was not found').toBeTruthy();
+    expect(block![0], 'the document must not scroll').toMatch(/overflow:\s*hidden/);
+    expect(block![0], 'no native overscroll refresh may chain out of the document').toMatch(/overscroll-behavior:\s*none/);
   });
 
   it('no pull-indicator styling survives to imply the gesture exists', () => {

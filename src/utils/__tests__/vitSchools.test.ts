@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isVitSchoolValue, schoolForBranch, resolveSchool } from '../vitSchools';
+import { isVitSchoolValue, schoolForBranch, resolveSchool, schoolLabel } from '../vitSchools';
 
 describe('isVitSchoolValue', () => {
   it('accepts VIT Chennai school acronyms and long forms', () => {
@@ -53,6 +53,17 @@ describe('schoolForBranch', () => {
     expect(schoolForBranch('Power Electronics and Mechanical Drives')).toBe('SELECT');
   });
 
+  it('maps ECS to SELECT, not SCOPE', () => {
+    // VIT's "Electrical and Computer Science Engineering" (ECS) contains the
+    // phrase "computer science", which used to fall through to SCOPE. It is a
+    // SELECT programme — the longer "electrical and computer science" phrase
+    // must win the substring race.
+    expect(schoolForBranch('Electrical and Computer Science Engineering')).toBe('SELECT');
+    expect(schoolForBranch('Electrical and Computer Science')).toBe('SELECT');
+    // The genuinely computer-science branches are still SCOPE.
+    expect(schoolForBranch('Computer Science and Engineering')).toBe('SCOPE');
+  });
+
   it('claims nothing for a branch it does not know', () => {
     expect(schoolForBranch('')).toBe('');
     expect(schoolForBranch('Some Future Programme')).toBe('');
@@ -73,5 +84,22 @@ describe('resolveSchool', () => {
     // No branch to go on either — the honest answer is blank, not a wrong school.
     expect(resolveSchool('Centre for e-Automation Technologies', '')).toBe('');
     expect(resolveSchool('', '')).toBe('');
+  });
+});
+
+describe('schoolLabel', () => {
+  it('spells an acronym out into the school\'s name', () => {
+    // The bare acronym "SELECT" reads as a placeholder on a student's own
+    // record; the screens print the school instead.
+    expect(schoolLabel('SELECT')).toBe('School of Electrical Engineering');
+    expect(schoolLabel('scope')).toBe('School of Computer Science and Engineering');
+    expect(schoolLabel('V-FIT')).toBe('School of Vellore Fashion Institute of Technology');
+  });
+
+  it('leaves a value that is already a name, or nothing, untouched', () => {
+    expect(schoolLabel('School of Advanced Sciences')).toBe('School of Advanced Sciences');
+    expect(schoolLabel('')).toBe('');
+    expect(schoolLabel(null)).toBe('');
+    expect(schoolLabel(undefined)).toBe('');
   });
 });

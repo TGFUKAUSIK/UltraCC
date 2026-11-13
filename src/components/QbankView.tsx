@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  FileText, Search, Plus, Loader2, WifiOff, ExternalLink, Trash2, ShieldAlert, Upload,
-  Bookmark, CheckCircle2, Circle, Flame, ChevronLeft, GraduationCap, X,
+  Bookmark, CheckCircle2, ChevronLeft, Circle, ExternalLink, FileText, Loader2, Plus,
+  Search, ShieldAlert, Trash2, Upload, WifiOff, X,
 } from 'lucide-react';
 import { fetchQnPapers, fetchQnCourses, postQnPaper, deleteQnPaper, makePaperCode, QnPaper } from '../lib/supabaseCommunity';
 import { humanErrorCopy } from '../lib/errorCopy';
@@ -12,7 +12,6 @@ import {
 import {
   applyPaperFilters, buildPracticeSet, getBookmarks, getSolved, knownExamTypes,
   paperMetaLine, practiceProgress, recentPapers, toggleBookmark, toggleSolved,
-  PracticeSet,
 } from '../utils/qbankStudy';
 import { QbankArchive } from './QbankArchive';
 
@@ -26,9 +25,13 @@ import { QbankArchive } from './QbankArchive';
  *                  students posted themselves, removable only from the device
  *                  that posted one.
  *
- * One route, one page, one study workflow. The toggle replaces nothing: both
- * shelves keep their own data, their own bookmarks and their own rules, and the
- * choice of which to open with is remembered per device.
+ * One route, one page, one study workflow. The mast, the shelf switch and the
+ * document ledger are shared vocabulary (see the Q-Bank layer in index.css): a
+ * paper renders as the same .uc-qb-doc row whichever half of the bank it came
+ * from, so the two shelves read as one library rather than two products. The
+ * toggle replaces nothing — both shelves keep their own data, their own
+ * bookmarks and their own rules, and the choice of which to open with is
+ * remembered per device.
  */
 export const QbankView: React.FC = () => {
   const [source, setSource] = useState<QbankSource>(readSourceChoice);
@@ -42,23 +45,34 @@ export const QbankView: React.FC = () => {
   }, [source]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-white border border-zinc-200 rounded-2xl" role="tablist" aria-label="Question paper source">
-        {([
-          ['archive', 'Full archive'],
-          ['shared', 'Student-shared'],
-        ] as [QbankSource, string][]).map(([value, label]) => (
-          <button
-            key={value}
-            role="tab"
-            aria-selected={source === value}
-            onClick={() => setSource(value)}
-            className={`min-h-[44px] flex-1 basis-auto px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${source === value ? 'acc-bg text-zinc-900' : 'bg-transparent text-zinc-500 hover:bg-zinc-50'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    <div className="uc-qb-view">
+      <section className="uc-plate uc-qb-mast">
+        <div className="uc-plate-head">
+          <div className="uc-qb-id">
+            <span className="uc-cap">Past papers</span>
+            <h2 className="uc-qb-name">Question Bank</h2>
+            <p className="uc-note">
+              Previous-year papers in one searchable shelf — the synced archive, plus what students shared here.
+            </p>
+          </div>
+        </div>
+        <div className="uc-seg uc-qb-src" role="tablist" aria-label="Question paper source">
+          {([
+            ['archive', 'Full archive'],
+            ['shared', 'Student-shared'],
+          ] as [QbankSource, string][]).map(([value, label]) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={source === value}
+              onClick={() => setSource(value)}
+              className={source === value ? 'is-on' : undefined}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
       {source === 'archive' ? <QbankArchive /> : <CommunityShelf />}
     </div>
   );
@@ -73,6 +87,20 @@ function readSourceChoice(): QbankSource {
   } catch {
     return 'archive';
   }
+}
+
+/**
+ * The only file kind a shared link can prove is the one its own URL names — a
+ * Drive or OneDrive URL names nothing, and a guess there would be a lie about
+ * what is behind the link. So an extension decides the caption, and its absence
+ * leaves the tile plain.
+ */
+function linkKind(url: string): string | null {
+  const path = (url.split(/[?#]/)[0] || '').toLowerCase();
+  if (path.endsWith('.pdf')) return 'PDF';
+  if (/\.(png|jpe?g|webp|gif|avif)$/.test(path)) return 'IMG';
+  if (/\.(docx?|pptx?|xlsx?)$/.test(path)) return 'DOC';
+  return null;
 }
 
 function CommunityShelf() {
@@ -132,6 +160,14 @@ function CommunityShelf() {
     () => (openCourse ? buildPracticeSet(openCourse, papers, solved) : null),
     [openCourse, papers, solved],
   );
+
+  const clearFilters = () => {
+    setQuery('');
+    setCourseFilter('');
+    setExamTypeFilter('');
+    setBookmarkFilter(null);
+    setSolvedFilter(null);
+  };
 
   const submit = async () => {
     if (!courseCode.trim() || !title.trim() || !url.trim()) return;
@@ -206,409 +242,350 @@ function CommunityShelf() {
 
   // ---- Course drill-down: Course → Papers → Practice ----
   if (openCourse) {
+    const progress = practiceSet ? practiceProgress(practiceSet) : null;
     return (
-      <div className="space-y-6">
-        <button
-          onClick={() => setOpenCourse(null)}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-zinc-900 transition cursor-pointer"
-        >
+      <div className="uc-qb-view">
+        <button className="uc-qb-back" onClick={() => setOpenCourse(null)}>
           <ChevronLeft className="h-4 w-4" /> All papers
         </button>
 
-        {loading && <LoadingBlock />}
+        {loading && (
+          <div className="uc-qb-loading"><Loader2 className="h-4 w-4 animate-spin" /> Collecting this course&rsquo;s papers…</div>
+        )}
+
         {!loading && practiceSet && (
           <>
-            <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl acc-soft acc-text border acc-border"><GraduationCap className="h-6 w-6" /></div>
-                <div>
-                  <h2 className="text-xl font-extrabold text-zinc-900 tracking-tight font-mono">{practiceSet.courseCode}</h2>
-                  {practiceSet.courseTitle && <p className="text-xs text-zinc-500 font-medium mt-0.5">{practiceSet.courseTitle}</p>}
+            <section className="uc-plate uc-qb-paper">
+              <div className="uc-qb-paper-top">
+                <div className="uc-qb-paper-id">
+                  <span className="uc-cap">Practice set</span>
+                  <h2 className="uc-qb-paper-name uc-num">{practiceSet.courseCode}</h2>
+                  {practiceSet.courseTitle && <p className="uc-note">{practiceSet.courseTitle}</p>}
                 </div>
+                <span className="uc-qb-file" aria-hidden="true"><FileText className="h-4 w-4" /></span>
               </div>
-              {practiceProgress(practiceSet) && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-[11px] text-zinc-500 font-bold">
+              {progress && (
+                <>
+                  <div className="uc-qb-progress">
                     <span>Practice progress</span>
-                    <span>{practiceProgress(practiceSet)!.done}/{practiceProgress(practiceSet)!.total} solved</span>
+                    <span className="uc-num">{progress.done}/{progress.total} solved</span>
                   </div>
-                  <div className="mt-1.5 h-2 rounded-full bg-zinc-100 overflow-hidden">
-                    <div className="h-full acc-bg rounded-full transition-all" style={{ width: `${practiceProgress(practiceSet)!.percent}%` }} />
+                  <div className="uc-meter" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent}>
+                    <i style={{ width: `${progress.percent}%` }} />
                   </div>
-                </div>
+                </>
               )}
-              <div className="mt-5 flex flex-wrap gap-2">
-                <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-white text-zinc-900 border border-zinc-200">
-                  {practiceSet.items.length} paper{practiceSet.items.length === 1 ? '' : 's'}
-                </span>
+              <div className="uc-qb-frow">
+                <span className="uc-qb-chip uc-qb-chip--static">{practiceSet.items.length} paper{practiceSet.items.length === 1 ? '' : 's'}</span>
                 {practiceSet.items.filter((i) => i.solved).length > 0 && (
-                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 border border-emerald-500/25">
-                    {practiceSet.items.filter((i) => i.solved).length} solved
-                  </span>
+                  <span className="uc-qb-chip uc-qb-chip--static is-good">{practiceSet.items.filter((i) => i.solved).length} solved</span>
                 )}
               </div>
-            </div>
+            </section>
 
-            <div className="space-y-3">
+            <section className="uc-plate uc-qb-ledger">
               {practiceSet.items.map(({ paper, solved: isSolved }) => (
-                <PaperRow
-                  key={paper.id}
-                  paper={paper}
-                  bookmarked={bookmarks.has(paper.id)}
-                  solved={isSolved}
-                  onToggleBookmark={() => setBookmarks(new Set(toggleBookmark(paper.id)))}
-                  onToggleSolved={() => setSolved(new Set(toggleSolved(paper.id)))}
-                  onRemove={canRemovePaper(ownedCodes, paperKey(paper)) ? () => void remove(paper) : undefined}
-                />
+                <div className={`uc-qb-doc${isSolved ? ' is-solved' : ''}`} key={paper.id}>
+                  <span className="uc-qb-file" aria-hidden="true">
+                    <FileText className="h-4 w-4" />
+                    {linkKind(paper.url) && <small>{linkKind(paper.url)}</small>}
+                  </span>
+                  <div className="uc-qb-main">
+                    <div className="uc-qb-top">
+                      <span className="uc-qb-code">{paper.course_code}</span>
+                      <span className={`uc-qb-tag${(paper.exam_type || '').trim() ? '' : ' is-muted'}`}>
+                        {paper.exam_type?.trim() || 'Paper'}
+                      </span>
+                    </div>
+                    <button className="uc-qb-doc-name" onClick={() => window.open(paper.url, '_blank', 'noopener,noreferrer')}>
+                      {paper.title}
+                    </button>
+                    <p className="uc-qb-doc-meta">{paperMetaLine(paper).join(' · ') || 'Shared by a student'}</p>
+                  </div>
+                  <div className="uc-qb-acts">
+                    <button
+                      className="uc-qb-ico"
+                      aria-pressed={bookmarks.has(paper.id)}
+                      aria-label={bookmarks.has(paper.id) ? `Remove bookmark from ${paper.title}` : `Bookmark ${paper.title}`}
+                      onClick={() => setBookmarks(new Set(toggleBookmark(paper.id)))}
+                    >
+                      <Bookmark className={`h-4 w-4${bookmarks.has(paper.id) ? ' fill-current' : ''}`} />
+                    </button>
+                    <button
+                      className={`uc-qb-ico${isSolved ? ' is-done' : ''}`}
+                      aria-pressed={isSolved}
+                      aria-label={isSolved ? `Mark ${paper.title} unsolved` : `Mark ${paper.title} solved`}
+                      onClick={() => setSolved(new Set(toggleSolved(paper.id)))}
+                    >
+                      {isSolved ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                    </button>
+                    {canRemovePaper(ownedCodes, paperKey(paper)) && (
+                      <button className="uc-qb-ico" aria-label={`Remove ${paper.title} from this device`} onClick={() => void remove(paper)}>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    <a className="uc-qb-open" href={paper.url} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-3.5 w-3.5" /><span>Open</span>
+                    </a>
+                  </div>
+                </div>
               ))}
-            </div>
+              <div className="uc-plate-foot">
+                <span>Practice set for <span className="uc-num">{practiceSet.courseCode}</span></span>
+              </div>
+            </section>
           </>
         )}
+
         {!loading && !practiceSet && (
-          <EmptyState
-            icon={<FileText className="h-8 w-8 text-zinc-600 mx-auto mb-2" />}
-            title="No papers for this course"
-            body="Share the first paper to start a practice set for your batchmates."
-          />
+          <section className="uc-plate uc-qb-blank">
+            <div className="uc-empty">
+              <span><b>No papers for this course.</b> Share the first paper to start a practice set for your batchmates.</span>
+            </div>
+          </section>
         )}
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Question Paper Bank</h2>
-          <p className="text-sm text-zinc-500 font-medium mt-1">
-            Past papers shared by VIT Chennai students — search by course code, build practice sets
-          </p>
+    <div className="uc-qb-view">
+      <section className="uc-plate uc-qb-mast">
+        <div className="uc-plate-head">
+          <div className="uc-qb-id">
+            <span className="uc-cap">Student-shared</span>
+            <p className="uc-note">Links students posted themselves. A paper can only be removed from the device that shared it.</p>
+          </div>
+          <button className="uc-qb-act acc-bg" onClick={() => setShowShare((s) => !s)} aria-expanded={showShare}>
+            <Plus className="h-4 w-4" /><span>Share a paper</span>
+          </button>
         </div>
-        <button
-          onClick={() => setShowShare((s) => !s)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl acc-bg text-zinc-900 text-xs font-bold acc-glow hover:opacity-90 transition cursor-pointer"
-        >
-          <Plus className="h-4 w-4" /> Share a Paper
-        </button>
-      </div>
+
+        {showShare && (
+          <div className="uc-qb-form">
+            <span className="uc-cap">Share a paper</span>
+            <div className="uc-qb-fields">
+              <label className="uc-qb-field">
+                <span>Course code *</span>
+                <input className="uc-qb-input" value={courseCode} onChange={(e) => setCourseCode(e.target.value)} placeholder="e.g. BAEEE102" />
+              </label>
+              <label className="uc-qb-field">
+                <span>Course title</span>
+                <input className="uc-qb-input" value={courseTitle} onChange={(e) => setCourseTitle(e.target.value)} placeholder="e.g. Electrical Circuit Analysis" />
+              </label>
+              <label className="uc-qb-field">
+                <span>Exam type</span>
+                <select className="uc-qb-input" value={examType} onChange={(e) => setExamType(e.target.value)}>
+                  <option>CAT-1</option>
+                  <option>CAT-2</option>
+                  <option>FAT</option>
+                  <option>Assignment</option>
+                  <option>Quiz</option>
+                  <option>Lab FAT</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label className="uc-qb-field">
+                <span>Uploaded by (optional)</span>
+                <input className="uc-qb-input" value={uploadedBy} onChange={(e) => setUploadedBy(e.target.value)} placeholder="anonymous" />
+              </label>
+              <label className="uc-qb-field uc-qb-field--wide">
+                <span>Title *</span>
+                <input className="uc-qb-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. CAT 1 — May 2024" />
+              </label>
+              <label className="uc-qb-field uc-qb-field--wide">
+                <span>Link to the paper * (Google Drive / OneDrive / direct URL)</span>
+                <input className="uc-qb-input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://drive.google.com/…" />
+              </label>
+            </div>
+            <div className="uc-qb-form-foot">
+              <div className="uc-qb-hint">
+                <ShieldAlert className="h-3.5 w-3.5" /> No personal data stored. A paper you share can only be removed from this device.
+              </div>
+              <button
+                className="uc-qb-act acc-bg"
+                onClick={() => void submit()}
+                disabled={sharing || !courseCode.trim() || !title.trim() || !url.trim()}
+              >
+                {sharing ? 'Sharing…' : 'Share paper'}
+              </button>
+            </div>
+            {sharedNotice && (
+              <div className="uc-qb-ok"><CheckCircle2 className="h-4 w-4" /> {sharedNotice}</div>
+            )}
+          </div>
+        )}
+
+        <div className="uc-qb-tools">
+          <div className="uc-qb-search">
+            <Search className="h-4 w-4" />
+            <input
+              aria-label="Search question papers"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search course code, title or exam type…"
+            />
+          </div>
+          <select className="uc-qb-select" aria-label="Filter by course" value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)}>
+            <option value="">All courses</option>
+            {courses.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select
+            className="uc-qb-select"
+            aria-label="Filter by solved status"
+            value={solvedFilter === null ? '' : solvedFilter ? 'solved' : 'unsolved'}
+            onChange={(e) => setSolvedFilter(e.target.value === '' ? null : e.target.value === 'solved')}
+          >
+            <option value="">Solved: all</option>
+            <option value="solved">Solved</option>
+            <option value="unsolved">Unsolved</option>
+          </select>
+          <button
+            className={`uc-qb-keep${bookmarkFilter ? ' is-on' : ''}`}
+            onClick={() => setBookmarkFilter((v) => (v === null ? true : null))}
+            aria-pressed={bookmarkFilter === true}
+            title="Show bookmarked papers only"
+          >
+            <Bookmark className={`h-4 w-4${bookmarkFilter ? ' fill-current' : ''}`} /> Saved
+          </button>
+        </div>
+
+        {!loading && (examTypes.length > 0 || recents.length > 0) && (
+          <div className="uc-qb-facets">
+            {examTypes.length > 0 && (
+              <div className="uc-qb-frow">
+                <span className="uc-qb-flabel">Exam</span>
+                <button className={`uc-qb-chip${examTypeFilter === '' ? ' is-on' : ''}`} onClick={() => setExamTypeFilter('')}>All</button>
+                {examTypes.map((t) => (
+                  <button
+                    key={t}
+                    className={`uc-qb-chip${examTypeFilter === t ? ' is-on' : ''}`}
+                    aria-pressed={examTypeFilter === t}
+                    onClick={() => setExamTypeFilter(examTypeFilter === t ? '' : t)}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+            {recents.length > 0 && (
+              <div className="uc-qb-frow">
+                <span className="uc-qb-flabel">Recent</span>
+                {recents.map((p) => (
+                  <button
+                    key={p.id}
+                    className="uc-qb-chip uc-num"
+                    onClick={() => { setCourseFilter(p.course_code); setQuery(''); setExamTypeFilter(''); setBookmarkFilter(null); setSolvedFilter(null); }}
+                    title={`${p.course_code} — open its papers`}
+                  >
+                    {p.course_code}
+                    {(p.exam_type || '').trim() && <i>{p.exam_type}</i>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {error && (
-        <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-700 text-xs flex items-center gap-2">
-          <WifiOff className="h-4 w-4 shrink-0" />
+        <div className="uc-qb-alert" role="alert">
+          <WifiOff className="h-4 w-4" />
           <span>{error}</span>
+          <button className="uc-qb-clear" onClick={() => void load(courseFilter || undefined)}>Try again</button>
         </div>
       )}
 
-      {/* Share form (unchanged community flow) */}
-      {showShare && (
-        <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-          <h3 className="text-base font-bold text-zinc-900 mb-4">Share a paper</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Course code *">
-              <input value={courseCode} onChange={(e) => setCourseCode(e.target.value)} placeholder="e.g. BAEEE102" className={inputCls} />
-            </Field>
-            <Field label="Course title">
-              <input value={courseTitle} onChange={(e) => setCourseTitle(e.target.value)} placeholder="e.g. Electrical Circuit Analysis" className={inputCls} />
-            </Field>
-            <Field label="Exam type">
-              <select value={examType} onChange={(e) => setExamType(e.target.value)} className={inputCls}>
-                <option>CAT-1</option>
-                <option>CAT-2</option>
-                <option>FAT</option>
-                <option>Assignment</option>
-                <option>Quiz</option>
-                <option>Lab FAT</option>
-                <option>Other</option>
-              </select>
-            </Field>
-            <Field label="Uploaded by (optional)">
-              <input value={uploadedBy} onChange={(e) => setUploadedBy(e.target.value)} placeholder="anonymous" className={inputCls} />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="Title *">
-                <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. CAT 1 — May 2024" className={inputCls} />
-              </Field>
-            </div>
-            <div className="sm:col-span-2">
-              <Field label="Link to the paper * (Google Drive / OneDrive / direct URL)">
-                <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://drive.google.com/…" className={inputCls} />
-              </Field>
-            </div>
+      {loading ? (
+        <section className="uc-plate uc-qb-ledger">
+          <div className="uc-qb-loading"><Loader2 className="h-4 w-4 animate-spin" /> Loading papers…</div>
+        </section>
+      ) : filtered.length === 0 ? (
+        <section className="uc-plate uc-qb-blank">
+          <div className="uc-empty">
+            <span>
+              <b>{papers.length === 0 ? 'No papers shared yet.' : 'No papers match these filters.'}</b>{' '}
+              {papers.length === 0
+                ? 'Share the first one to help your batchmates.'
+                : bookmarkFilter
+                  ? 'No bookmarked papers yet — tap the bookmark on any paper to keep it here.'
+                  : 'Try a different search, or clear the filters.'}
+            </span>
+            {papers.length > 0 && (
+              <button className="uc-qb-clear" onClick={clearFilters}><X className="h-3.5 w-3.5" /> Clear filters</button>
+            )}
           </div>
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <p className="text-[10px] text-zinc-500 flex items-center gap-1.5">
-              <ShieldAlert className="h-3.5 w-3.5" /> No personal data stored. A paper you share can only be removed from this device.
-            </p>
-            <button
-              onClick={() => void submit()}
-              disabled={sharing || !courseCode.trim() || !title.trim() || !url.trim()}
-              className="px-5 py-2 rounded-xl acc-bg text-zinc-900 text-xs font-bold acc-glow hover:opacity-90 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {sharing ? 'Sharing…' : 'Share Paper'}
-            </button>
-          </div>
-          {sharedNotice && (
-            <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-700 text-xs">
-              {sharedNotice}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Recent papers — honest recency from real upload timestamps */}
-      {!loading && recents.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">
-            <Flame className="h-3.5 w-3.5 text-amber-600" /> Recently shared
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {recents.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => { setCourseFilter(p.course_code); setQuery(''); setExamTypeFilter(''); setBookmarkFilter(null); setSolvedFilter(null); }}
-                className="px-3 py-1.5 rounded-xl bg-white border border-zinc-200 text-[11px] font-bold text-zinc-900 hover:border-zinc-300 transition cursor-pointer"
-                title={`${p.course_code} — open its papers`}
-              >
-                <span className="font-mono">{p.course_code}</span>
-                {(p.exam_type || '').trim() && <span className="text-zinc-500 font-medium"> · {p.exam_type}</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Search + filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-          <input
-            aria-label="Search question papers"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search course code, title, exam type…"
-            className="w-full pl-9 pr-3 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-500 outline-none focus:border-blue-500/60 transition"
-          />
-        </div>
-        <select
-          aria-label="Filter by course"
-          value={courseFilter}
-          onChange={(e) => setCourseFilter(e.target.value)}
-          className="px-3 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 outline-none focus:border-blue-500/60 cursor-pointer"
-        >
-          <option value="">All courses</option>
-          {courses.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by solved status"
-          value={solvedFilter === null ? '' : solvedFilter ? 'solved' : 'unsolved'}
-          onChange={(e) => setSolvedFilter(e.target.value === '' ? null : e.target.value === 'solved')}
-          className="px-3 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 outline-none focus:border-blue-500/60 cursor-pointer"
-        >
-          <option value="">Solved: all</option>
-          <option value="solved">Solved</option>
-          <option value="unsolved">Unsolved</option>
-        </select>
-        <button
-          onClick={() => setBookmarkFilter((v) => (v === null ? true : null))}
-          className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${bookmarkFilter ? 'acc-soft acc-text border acc-border' : 'bg-white border-zinc-200 text-zinc-500 hover:border-zinc-300'}`}
-          title="Show bookmarked papers only"
-        >
-          <Bookmark className={`h-4 w-4 ${bookmarkFilter ? 'fill-current' : ''}`} /> Saved
-        </button>
-      </div>
-
-      {/* Exam-type chips — only types that actually exist in the data */}
-      {!loading && examTypes.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <Chip active={examTypeFilter === ''} onClick={() => setExamTypeFilter('')}>All types</Chip>
-          {examTypes.map((t) => (
-            <Chip key={t} active={examTypeFilter === t} onClick={() => setExamTypeFilter(examTypeFilter === t ? '' : t)}>{t}</Chip>
-          ))}
-        </div>
-      )}
-
-      {loading && <LoadingBlock />}
-
-      {!loading && filtered.length === 0 && (
-        <EmptyState
-          icon={<FileText className="h-8 w-8 text-zinc-600 mx-auto mb-2" />}
-          title={papers.length === 0 ? 'No papers shared yet' : 'No papers match these filters'}
-          body={
-            papers.length === 0
-              ? 'Share the first one to help your batchmates.'
-              : bookmarkFilter
-                ? 'No bookmarked papers yet — tap the bookmark icon on any paper to save it here.'
-                : 'Try a different search or clear the filters.'
-          }
-          onClear={
-            papers.length > 0 && (query || courseFilter || examTypeFilter || bookmarkFilter !== null || solvedFilter !== null)
-              ? () => { setQuery(''); setCourseFilter(''); setExamTypeFilter(''); setBookmarkFilter(null); setSolvedFilter(null); }
-              : undefined
-          }
-        />
-      )}
-
-      {!loading && filtered.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        </section>
+      ) : (
+        <section className="uc-plate uc-qb-ledger">
           {filtered.map((p) => (
-            <PaperRow
-              key={p.id}
-              paper={p}
-              bookmarked={bookmarks.has(p.id)}
-              solved={solved.has(p.id)}
-              onToggleBookmark={() => setBookmarks(new Set(toggleBookmark(p.id)))}
-              onToggleSolved={() => setSolved(new Set(toggleSolved(p.id)))}
-              onRemove={canRemovePaper(ownedCodes, paperKey(p)) ? () => void remove(p) : undefined}
-              onOpenCourse={(code) => { setOpenCourse(code); setCourseFilter(''); setExamTypeFilter(''); setBookmarkFilter(null); setSolvedFilter(null); }}
-            />
+            <div className={`uc-qb-doc${solved.has(p.id) ? ' is-solved' : ''}`} key={p.id}>
+              <span className="uc-qb-file" aria-hidden="true">
+                <FileText className="h-4 w-4" />
+                {linkKind(p.url) && <small>{linkKind(p.url)}</small>}
+              </span>
+              <div className="uc-qb-main">
+                <div className="uc-qb-top">
+                  <button
+                    className="uc-qb-code is-link"
+                    onClick={() => { setOpenCourse(p.course_code); clearFilters(); }}
+                    title={`Open every ${p.course_code} paper`}
+                  >
+                    {p.course_code}
+                  </button>
+                  <span className={`uc-qb-tag${(p.exam_type || '').trim() ? '' : ' is-muted'}`}>
+                    {p.exam_type?.trim() || 'Paper'}
+                  </span>
+                </div>
+                <button className="uc-qb-doc-name" onClick={() => window.open(p.url, '_blank', 'noopener,noreferrer')}>
+                  {p.title}
+                </button>
+                <p className="uc-qb-doc-meta">{paperMetaLine(p).join(' · ') || 'Shared by a student'}</p>
+              </div>
+              <div className="uc-qb-acts">
+                <button
+                  className="uc-qb-ico"
+                  aria-pressed={bookmarks.has(p.id)}
+                  aria-label={bookmarks.has(p.id) ? `Remove bookmark from ${p.title}` : `Bookmark ${p.title}`}
+                  onClick={() => setBookmarks(new Set(toggleBookmark(p.id)))}
+                >
+                  <Bookmark className={`h-4 w-4${bookmarks.has(p.id) ? ' fill-current' : ''}`} />
+                </button>
+                <button
+                  className={`uc-qb-ico${solved.has(p.id) ? ' is-done' : ''}`}
+                  aria-pressed={solved.has(p.id)}
+                  aria-label={solved.has(p.id) ? `Mark ${p.title} unsolved` : `Mark ${p.title} solved`}
+                  onClick={() => setSolved(new Set(toggleSolved(p.id)))}
+                >
+                  {solved.has(p.id) ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                </button>
+                {canRemovePaper(ownedCodes, paperKey(p)) && (
+                  <button className="uc-qb-ico" aria-label={`Remove ${p.title} from this device`} onClick={() => void remove(p)}>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+                <a className="uc-qb-open" href={p.url} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-3.5 w-3.5" /><span>Open</span>
+                </a>
+              </div>
+            </div>
           ))}
-        </div>
+          <div className="uc-plate-foot">
+            <span>
+              Showing {filtered.length} of {papers.length} paper{papers.length === 1 ? '' : 's'}
+              {filtered.length < papers.length ? ' — refine the search to narrow down' : ''}
+            </span>
+          </div>
+        </section>
       )}
 
-      {!loading && papers.length > 0 && filtered.length < papers.length && (
-        <p className="text-[11px] text-zinc-500">
-          Showing {filtered.length} of {papers.length} papers — refine your search to narrow down.
-        </p>
-      )}
-
-      <div className="flex items-center gap-2 text-[10px] text-zinc-600 p-3 bg-white border border-zinc-200 rounded-2xl">
-        <Upload className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          Community-contributed archive — papers are not official unless marked so. Always cross-check with your faculty.
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Pieces
-// ---------------------------------------------------------------------------
-
-export function PaperRow({ paper, bookmarked, solved, onToggleBookmark, onToggleSolved, onRemove, onOpenCourse }: {
-  key?: React.Key;
-  paper: QnPaper;
-  bookmarked: boolean;
-  solved: boolean;
-  onToggleBookmark: () => void;
-  onToggleSolved: () => void;
-  /** Present only when THIS device holds the paper's removal code. */
-  onRemove?: () => void;
-  onOpenCourse?: (code: string) => void;
-}) {
-  const meta = paperMetaLine(paper);
-  return (
-    <div className={`bg-white border rounded-3xl p-5 hover:border-zinc-200 transition ${solved ? 'border-emerald-500/25' : 'border-zinc-200'}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          {onOpenCourse ? (
-            <button onClick={() => onOpenCourse(paper.course_code)} className="font-mono font-bold text-zinc-900 text-sm hover:underline cursor-pointer" title="Open this course's papers">
-              {paper.course_code}
-            </button>
-          ) : (
-            <p className="font-mono font-bold text-zinc-900 text-sm">{paper.course_code}</p>
-          )}
-          {paper.course_title && <p className="text-[11px] text-zinc-500 truncate mt-0.5">{paper.course_title}</p>}
+      <section className="uc-plate uc-plate--quiet">
+        <div className="uc-qb-hint">
+          <Upload className="h-3.5 w-3.5" /> Community-contributed archive — papers are not official unless marked so. Always cross-check with your faculty.
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={onToggleBookmark}
-            aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark this paper'}
-            aria-pressed={bookmarked}
-            className={`p-1.5 rounded-lg transition cursor-pointer ${bookmarked ? 'text-amber-600 bg-amber-500/10' : 'text-zinc-600 hover:text-amber-600 hover:bg-amber-500/10'}`}
-          >
-            <Bookmark className={`h-4 w-4 ${bookmarked ? 'fill-current' : ''}`} />
-          </button>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${paper.exam_type?.trim() ? 'acc-soft acc-text acc-border' : 'bg-white text-zinc-500 border-zinc-200'}`}>
-            {paper.exam_type?.trim() || 'Paper'}
-          </span>
-        </div>
-      </div>
-      <p className="mt-2.5 text-sm text-zinc-900 font-medium">{paper.title}</p>
-      {/* Only known metadata is rendered — never invented. */}
-      {meta.length > 0 && (
-        <p className="mt-1 text-[10px] text-zinc-500">{meta.join(' · ')}</p>
-      )}
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <button
-          onClick={onToggleSolved}
-          aria-pressed={solved}
-          className={`inline-flex items-center gap-1.5 text-[11px] font-bold rounded-xl px-3 py-1.5 border transition cursor-pointer ${solved ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/25' : 'bg-white text-zinc-500 border-zinc-200 hover:text-emerald-700'}`}
-        >
-          {solved ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-          {solved ? 'Solved' : 'Mark solved'}
-        </button>
-        <div className="flex items-center gap-1.5">
-          {onRemove && (
-            <button
-              onClick={onRemove}
-              className="p-1.5 rounded-lg text-zinc-600 hover:text-rose-600 hover:bg-rose-500/10 transition cursor-pointer"
-              title="Remove this paper (only this device can)"
-              aria-label={`Remove paper ${paper.title}`}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <a
-            href={paper.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl acc-soft acc-text border acc-border text-[11px] font-bold hover:opacity-90 transition cursor-pointer"
-          >
-            <ExternalLink className="h-3 w-3" /> Open
-          </a>
-        </div>
-      </div>
+      </section>
     </div>
-  );
-}
-
-function Chip({ active, onClick, children }: { key?: React.Key; active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold transition cursor-pointer ${active ? 'acc-soft acc-text acc-border' : 'bg-white border-zinc-200 text-zinc-500 hover:border-zinc-300'}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function EmptyState({ icon, title, body, onClear }: { icon: React.ReactNode; title: string; body: string; onClear?: () => void }) {
-  return (
-    <div className="p-10 bg-white border border-zinc-200 rounded-3xl text-center">
-      {icon}
-      <p className="text-sm font-bold text-zinc-900">{title}</p>
-      <p className="text-[11px] text-zinc-500 mt-1 max-w-xs mx-auto">{body}</p>
-      {onClear && (
-        <button onClick={onClear} className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-zinc-200 text-[11px] font-bold text-zinc-900 hover:border-zinc-300 transition cursor-pointer">
-          <X className="h-3.5 w-3.5" /> Clear filters
-        </button>
-      )}
-    </div>
-  );
-}
-
-function LoadingBlock() {
-  return (
-    <div className="flex items-center justify-center py-16 text-zinc-500">
-      <Loader2 className="h-6 w-6 animate-spin mr-3" />
-      <span className="text-sm font-medium">Loading papers…</span>
-    </div>
-  );
-}
-
-const inputCls =
-  'w-full px-3 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-500 outline-none focus:border-blue-500/60 transition';
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-[10px] uppercase tracking-wide text-zinc-500 font-bold block mb-1.5">{label}</span>
-      {children}
-    </label>
   );
 }

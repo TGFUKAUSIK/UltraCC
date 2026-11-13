@@ -40,6 +40,21 @@ describe('eventDateKey', () => {
     expect(key).toBe('2026-09-14');
   });
 
+  it('refuses a day the month never had', () => {
+    // Shaped like a date is not a date: 30 February exists in no calendar, and
+    // letting it through would park the event on a grid cell that cannot hold it.
+    expect(eventDateKey('30-02-2026')).toBeNull();
+    expect(eventDateKey('31/04/2026')).toBeNull();
+    expect(eventDateKey('2026-02-30')).toBeNull();
+    expect(eventDateKey('2026-13-05')).toBeNull();
+    expect(eventDateKey('2026-02-30T18:00:00Z')).toBeNull();
+  });
+
+  it('still accepts the days that only look impossible', () => {
+    expect(eventDateKey('29-02-2028')).toBe('2028-02-29');
+    expect(eventDateKey('31-12-2026')).toBe('2026-12-31');
+  });
+
   it('returns null for garbage — never guesses a day', () => {
     expect(eventDateKey('')).toBeNull();
     expect(eventDateKey('TBD')).toBeNull();
@@ -61,6 +76,14 @@ describe('buildEventOverlay', () => {
   it('skips unparseable dates honestly', () => {
     const overlay = buildEventOverlay([ev('1', 'TBD event', 'fest', 'TBD')]);
     expect(overlay.size).toBe(0);
+  });
+
+  it('skips a date that names a day which never happened', () => {
+    const overlay = buildEventOverlay([
+      ev('1', 'Impossible fest', 'fest', '31-02-2026'),
+      ev('2', 'Real fest', 'fest', '14-09-2026'),
+    ]);
+    expect([...overlay.keys()]).toEqual(['2026-09-14']);
   });
 
   it('carries the category through', () => {

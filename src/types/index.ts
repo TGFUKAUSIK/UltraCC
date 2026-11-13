@@ -40,7 +40,12 @@ export interface AttendanceRecord {
   attended: number;
   totalHeld: number;
   percentage: number;
-  category: 'Safe' | 'Warning' | 'Critical';
+  /**
+   * No `category`: a Safe/Warning/Critical word baked in at sync time is a
+   * second attendance bar next to the one the student actually set, and it
+   * goes stale the moment the slider moves. Surfaces judge `percentage`
+   * against `getTargetAttendance()` when they render.
+   */
   lastUpdated: string;
   venue: string;
 }
@@ -153,15 +158,4 @@ export interface FresherTerm {
   meaning: string;
   studentAdvice: string;
   example: string;
-}
-
-export interface NextActionState {
-  currentStatus: 'Class Active' | 'Upcoming Class' | 'Free Period' | 'Exam Day' | 'Evening Free';
-  title: string;
-  timeContext: string;
-  locationContext: string;
-  reasoning: string;
-  nextStep: string;
-  countdownMinutes: number;
-  urgency: 'low' | 'medium' | 'high' | 'critical';
 }

@@ -1,4 +1,5 @@
 import { TimetableSlot } from '../types';
+import { slotMeetings, slotTimeOn } from '../../../utils/chennaiSlotMap';
 import { combineLabSessions } from '../../../utils/labSessions';
 import {
   parseDocument,
@@ -10,111 +11,6 @@ import {
   isLikelySessionExpiredPage,
   normalizeHeader,
 } from './helpers';
-
-/**
- * Standard VIT FFCS slot timings (VIT Chennai). These are public scheduling
- * facts, reproduced independently. Slots rotate per weekday, e.g. Monday
- * starts with A1 at 08:00 while Tuesday starts with B1.
- *
- * Used only to enrich rows that VTOP does not render a time column for
- * (the fallback row-list shape). The real timetable grid carries explicit
- * start/end times, which always win.
- */
-export const FFCS_SLOT_TIMES: Record<string, Record<string, { start: string; end: string }>> = {
-  Monday: {
-    A1: { start: '08:00', end: '08:50' }, F1: { start: '08:55', end: '09:45' }, D1: { start: '09:50', end: '10:40' },
-    TB1: { start: '10:45', end: '11:35' }, TG1: { start: '11:40', end: '12:30' },
-    A2: { start: '14:00', end: '14:50' }, F2: { start: '14:55', end: '15:45' }, D2: { start: '15:50', end: '16:40' },
-    TB2: { start: '16:45', end: '17:35' }, TG2: { start: '17:40', end: '18:30' },
-  },
-  Tuesday: {
-    B1: { start: '08:00', end: '08:50' }, G1: { start: '08:55', end: '09:45' }, E1: { start: '09:50', end: '10:40' },
-    TC1: { start: '10:45', end: '11:35' }, TAA1: { start: '11:40', end: '12:30' },
-    B2: { start: '14:00', end: '14:50' }, G2: { start: '14:55', end: '15:45' }, E2: { start: '15:50', end: '16:40' },
-    TC2: { start: '16:45', end: '17:35' }, TAA2: { start: '17:40', end: '18:30' },
-  },
-  Wednesday: {
-    C1: { start: '08:00', end: '08:50' }, A1: { start: '08:55', end: '09:45' }, F1: { start: '09:50', end: '10:40' },
-    TD1: { start: '10:45', end: '11:35' }, TBB1: { start: '11:40', end: '12:30' },
-    C2: { start: '14:00', end: '14:50' }, A2: { start: '14:55', end: '15:45' }, F2: { start: '15:50', end: '16:40' },
-    TD2: { start: '16:45', end: '17:35' }, TBB2: { start: '17:40', end: '18:30' },
-  },
-  Thursday: {
-    D1: { start: '08:00', end: '08:50' }, B1: { start: '08:55', end: '09:45' }, G1: { start: '09:50', end: '10:40' },
-    TE1: { start: '10:45', end: '11:35' }, TCC1: { start: '11:40', end: '12:30' },
-    D2: { start: '14:00', end: '14:50' }, B2: { start: '14:55', end: '15:45' }, G2: { start: '15:50', end: '16:40' },
-    TE2: { start: '16:45', end: '17:35' }, TCC2: { start: '17:40', end: '18:30' },
-  },
-  Friday: {
-    E1: { start: '08:00', end: '08:50' }, C1: { start: '08:55', end: '09:45' }, TA1: { start: '09:50', end: '10:40' },
-    TF1: { start: '10:45', end: '11:35' }, TDD1: { start: '11:40', end: '12:30' },
-    E2: { start: '14:00', end: '14:50' }, C2: { start: '14:55', end: '15:45' }, TA2: { start: '15:50', end: '16:40' },
-    TF2: { start: '16:45', end: '17:35' }, TDD2: { start: '17:40', end: '18:30' },
-  },
-  Saturday: {
-    X11: { start: '08:00', end: '08:50' }, X12: { start: '08:55', end: '09:45' }, Y11: { start: '09:50', end: '10:40' },
-    Y12: { start: '10:45', end: '11:35' },
-    X21: { start: '14:00', end: '14:50' }, Z21: { start: '14:55', end: '15:45' }, Y21: { start: '15:50', end: '16:40' },
-    W21: { start: '16:45', end: '17:35' }, W22: { start: '17:40', end: '18:30' }, Z22: { start: '18:35', end: '19:25' },
-  },
-  Sunday: {
-    Y11: { start: '08:00', end: '08:50' }, Y12: { start: '08:55', end: '09:45' }, X11: { start: '09:50', end: '10:40' },
-    X12: { start: '10:45', end: '11:35' },
-    Y21: { start: '14:00', end: '14:50' }, Z21: { start: '14:55', end: '15:45' }, X21: { start: '15:50', end: '16:40' },
-    W21: { start: '16:45', end: '17:35' }, W22: { start: '17:40', end: '18:30' }, Z22: { start: '18:35', end: '19:25' },
-  },
-};
-
-/** Lab slots run 50-60 minute blocks across the day; approximate mapping. */
-const LAB_SLOT_TIMES: Record<string, { start: string; end: string }> = {
-  L1: { start: '08:00', end: '08:50' }, L2: { start: '08:50', end: '09:40' },
-  L3: { start: '09:50', end: '10:40' }, L4: { start: '10:40', end: '11:30' },
-  L5: { start: '11:40', end: '12:30' }, L6: { start: '12:30', end: '13:20' },
-  L31: { start: '14:00', end: '14:50' }, L32: { start: '14:50', end: '15:40' },
-  L33: { start: '15:50', end: '16:40' }, L34: { start: '16:40', end: '17:30' },
-  L35: { start: '17:40', end: '18:30' }, L36: { start: '18:30', end: '19:20' },
-};
-
-/**
- * Authoritative VIT Chennai slot → day/time timings (public scheduling facts
- * for VIT Chennai students). Slot letter determines meeting days AND times:
- * A1 meets Mon 08:00–08:50 and Wed 08:55–09:45; L31 is Mon 14:00–14:50.
- */
-const CHENNAI_SLOT_TIMES: Record<string, Record<string, string>> = {
-  MON: { A1: '8:00-8:50', F1: '8:55-9:45', D1: '9:50-10:40', TB1: '10:45-11:35', TG1: '11:40-12:30', A2: '2:00-2:50', F2: '2:55-3:45', D2: '3:50-4:40', TB2: '4:45-5:35', TG2: '5:40-6:30', L1: '8:00-8:50', L2: '8:50-9:40', L3: '9:50-10:40', L4: '10:40-11:30', L5: '11:40-12:30', L6: '12:30-1:20', L31: '2:00-2:50', L32: '2:50-3:40', L33: '3:50-4:40', L34: '4:40-5:30', L35: '5:40-6:30', L36: '6:30-7:20' },
-  TUE: { B1: '8:00-8:50', G1: '8:55-9:45', E1: '9:50-10:40', TC1: '10:45-11:35', TAA1: '11:40-12:30', B2: '2:00-2:50', G2: '2:55-3:45', E2: '3:50-4:40', TC2: '4:45-5:35', TAA2: '5:40-6:30', L7: '8:00-8:50', L8: '8:50-9:40', L9: '9:50-10:40', L10: '10:40-11:30', L11: '11:40-12:30', L37: '2:00-2:50', L38: '2:50-3:40', L39: '3:50-4:40', L40: '4:40-5:30', L41: '5:40-6:30', L42: '6:30-7:20' },
-  WED: { C1: '8:00-8:50', A1: '8:55-9:45', F1: '9:50-10:40', TD1: '10:45-11:35', TBB1: '11:40-12:30', C2: '2:00-2:50', A2: '2:55-3:45', F2: '3:50-4:40', TD2: '4:45-5:35', TBB2: '5:40-6:30', L13: '8:00-8:50', L14: '8:50-9:40', L15: '9:50-10:40', L16: '10:40-11:30', L17: '11:40-12:30', L43: '2:00-2:50', L44: '2:50-3:40', L45: '3:50-4:40', L46: '4:40-5:30', L47: '5:40-6:30', L48: '6:30-7:20' },
-  THU: { D1: '8:00-8:50', B1: '8:55-9:45', G1: '9:50-10:40', TE1: '10:45-11:35', TCC1: '11:40-12:30', D2: '2:00-2:50', B2: '2:55-3:45', G2: '3:50-4:40', TE2: '4:45-5:35', TCC2: '5:40-6:30', L19: '8:00-8:50', L20: '8:50-9:40', L21: '9:50-10:40', L22: '10:40-11:30', L23: '11:40-12:30', L49: '2:00-2:50', L50: '2:50-3:40', L51: '3:50-4:40', L52: '4:40-5:30', L53: '5:40-6:30', L54: '6:30-7:20' },
-  FRI: { E1: '8:00-8:50', C1: '8:55-9:45', TA1: '9:50-10:40', TF1: '10:45-11:35', TDD1: '11:40-12:30', E2: '2:00-2:50', C2: '2:55-3:45', TA2: '3:50-4:40', TF2: '4:45-5:35', TDD2: '5:40-6:30', L25: '8:00-8:50', L26: '8:50-9:40', L27: '9:50-10:40', L28: '10:40-11:30', L29: '11:40-12:30', L30: '12:30-1:20', L55: '2:00-2:50', L56: '2:50-3:40', L57: '3:50-4:40', L58: '4:40-5:30', L59: '5:40-6:30', L60: '6:30-7:20' },
-  SAT: { X11: '8:00-8:50', X12: '8:55-9:45', Y11: '9:50-10:40', Y12: '10:45-11:35', X21: '2:00-2:50', Z21: '2:55-3:45', Y21: '3:50-4:40', W21: '4:45-5:35', W22: '5:40-6:30', Z22: '6:35-7:25', L71: '8:00-8:50', L72: '8:50-9:40', L73: '9:50-10:40', L74: '10:40-11:30', L75: '11:40-12:30', L76: '12:30-1:20', L77: '2:00-2:50', L78: '2:50-3:40', L79: '3:50-4:40', L80: '4:40-5:30', L81: '5:40-6:30', L82: '6:30-7:20' },
-};
-
-const GRID_WEEKDAYS: Record<string, string> = {
-  SUN: 'Sunday', MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday',
-  THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday',
-};
-
-/** Chennai schedules use 12-hour times with afternoon slots written 1:xx–7:xx. */
-function to24hSlotTime(t: string): string {
-  const m = t.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return '';
-  let h = parseInt(m[1], 10);
-  if (h < 8) h += 12;
-  return `${String(h).padStart(2, '0')}:${m[2]}`;
-}
-
-/** Every weekly (day, start, end) meeting for a slot code. */
-function slotDayTimes(slot: string): { day: string; start: string; end: string }[] {
-  const key = (slot || '').trim().toUpperCase();
-  const out: { day: string; start: string; end: string }[] = [];
-  for (const [day, slots] of Object.entries(CHENNAI_SLOT_TIMES)) {
-    const raw = slots[key];
-    if (!raw) continue;
-    const [s, e] = raw.split('-').map((t) => t.trim());
-    out.push({ day: GRID_WEEKDAYS[day], start: to24hSlotTime(s), end: to24hSlotTime(e) });
-  }
-  return out;
-}
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const DAY_CODES: Record<string, string> = {
@@ -167,21 +63,6 @@ function venueInfo(venue: string): { venue: string; building: string } {
   return { venue: venue || 'TBA', building };
 }
 
-function slotTimes(day: string, slot: string): { start: string; end: string } | null {
-  const firstToken = slot.trim().toUpperCase().split('+')[0].trim();
-  const dayCode = Object.keys(DAY_CODES).find((code) => DAY_CODES[code] === day);
-  const chennai = dayCode ? CHENNAI_SLOT_TIMES[dayCode]?.[firstToken] : undefined;
-  if (chennai) {
-    const [start, end] = chennai.split(DASH_SPLIT_RE).map((t) => to24hSlotTime(t.trim()));
-    if (start && end) return { start, end };
-  }
-  const lab = firstToken.match(/^(L\d{1,2})$/);
-  if (lab && LAB_SLOT_TIMES[lab[1]]) return LAB_SLOT_TIMES[lab[1]];
-  const theory = FFCS_SLOT_TIMES[day]?.[firstToken];
-  if (theory) return theory;
-  return null;
-}
-
 function buildSlot(
   day: string,
   slot: string,
@@ -203,7 +84,7 @@ function buildSlot(
     endTime = e || '';
   }
   if (!startTime) {
-    const derived = slotTimes(day, slot);
+    const derived = slotTimeOn(day, slot);
     if (derived) {
       startTime = derived.start;
       endTime = derived.end;
@@ -477,7 +358,7 @@ function coursesToSlots(courses: CourseMeta[]): TimetableSlot[] {
   const slots: TimetableSlot[] = [];
   for (const c of courses) {
     for (const slot of c.slots) {
-      const meetings = slotDayTimes(slot);
+      const meetings = slotMeetings(slot);
       if (!meetings.length) continue;
       const { venue, building } = venueInfo(c.venue);
       // One embedded course list row can carry both its theory and lab slots

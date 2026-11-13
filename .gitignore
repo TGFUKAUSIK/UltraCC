@@ -19,5 +19,6 @@ supabase/.temp/
 
 # Local, unrelated scratch
 assets/
+!mobile/assets/
 .freebuff/
 idp-review-1/

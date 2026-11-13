@@ -27,6 +27,7 @@ function envValue(key: string, fallback: string): string {
 }
 
 export const SUPABASE_URL = envValue('VITE_SUPABASE_URL', 'https://your-project.supabase.co');
+
 export const ANON_KEY = envValue('VITE_SUPABASE_ANON_KEY', 'your_supabase_anon_key');
 
 /** What a caller may show when `edgeFetch` throws — human, and true for any dataset. */
@@ -58,14 +59,29 @@ export interface FacultyMember {
   email: string;
 }
 
+export interface HubEventOption {
+  type: string;
+  price: string;
+  eligibility: string;
+}
+
 export interface HubEvent {
   eid: string;
   title: string;
-  eligibility: string;
-  type: string;
+  /** ISO "YYYY-MM-DD" when parseable, else the card's verbatim date cell. */
   date: string;
   location: string;
-  price: string;
+  /** Deterministic public poster route, keyed by event id. */
   posterUrl: string;
+  /** The same poster mirrored by the event-hub function, for clients whose TLS
+   *  verifier will not repair the Event Hub host's incomplete certificate
+   *  chain (iPhone, Android). See `src/lib/eventPoster.ts`. */
+  posterProxy?: string;
+  /** Deep link to the exact event's preview page (sign-in required there). */
   registerUrl: string;
+  teamSize: string;
+  type: string;
+  price: string;
+  eligibility: string;
+  options: HubEventOption[];
 }

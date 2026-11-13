@@ -1,77 +1,103 @@
 /**
- * PwaStatusBar — quiet, mobile-first PWA affordances rendered above content:
+ * PwaStatusBar — quiet, one-line PWA affordances rendered above content:
  *
- *   - "Update ready — tap to refresh" when a new service worker version is
- *     waiting (never auto-reloads mid-task).
- *   - A dismissible iOS "Add to Home Screen" hint (iOS has no install
- *     prompt). Android/Chrome get the native prompt via Settings instead.
+ *   - "Update ready" when a new service worker version is waiting (never
+ *     auto-reloads mid-task).
+ *   - An install chip (Chrome/Edge/Android) or the iOS "Add to Home Screen"
+ *     hint, since iOS has no install prompt.
  *
- * Everything here is opt-in, dismissible, and never blocks content.
+ * It is a chip, not a bar: 36px tall with an 8px seam, so it can never push the
+ * greeting down by more than ~44px. Everything is opt-in and dismissible, and
+ * nothing here ever blocks content. Installing and the iOS hint stay dismissed
+ * once the student waves them off; an update notice is tied to the waiting
+ * build, so dismissing it lasts only for the session (persisting it would hide
+ * a real update forever).
+ *
+ * Installing is the only thing that means nothing once the app is installed. The
+ * update notice means *more* there: an installed shell is cached, and the worker
+ * will not swap it out on its own. So `isStandalone` silences the install
+ * affordances, not the update.
  */
 
 import React, { useEffect, useState } from 'react';
 import { ArrowDownToLine, RefreshCw, Share, X } from 'lucide-react';
 import { usePwa } from '../hooks/usePwa';
 
+const INSTALL_KEY = 'ultracc:installPromptDismissed';
 const IOS_HINT_KEY = 'ultracc:iosInstallHintDismissed';
+
+interface Chip {
+  icon: React.ReactNode;
+  text: React.ReactNode;
+  action?: { label: string; onClick: () => void };
+  onDismiss: () => void;
+  /** Announced like a status change (only the "updated" notice is one). */
+  status: boolean;
+}
 
 export const PwaStatusBar: React.FC = () => {
   const { isStandalone, isIOS, canInstall, updateReady, promptInstall, applyUpdate } = usePwa();
-  const [iosHintDismissed, setIosHintDismissed] = useState(true);
+  const [dismissed, setDismissed] = useState<Record<string, boolean>>({});
+  const [updateHidden, setUpdateHidden] = useState(false);
 
   useEffect(() => {
     try {
-      setIosHintDismissed(localStorage.getItem(IOS_HINT_KEY) === '1');
+      setDismissed({
+        [INSTALL_KEY]: localStorage.getItem(INSTALL_KEY) === '1',
+        [IOS_HINT_KEY]: localStorage.getItem(IOS_HINT_KEY) === '1',
+      });
     } catch { /* storage unavailable */ }
   }, []);
 
-  const dismissIosHint = () => {
-    setIosHintDismissed(true);
-    try { localStorage.setItem(IOS_HINT_KEY, '1'); } catch { /* ignore */ }
+  const dismiss = (key: string) => {
+    setDismissed((prev) => ({ ...prev, [key]: true }));
+    try { localStorage.setItem(key, '1'); } catch { /* ignore */ }
   };
 
-  // Already installed → nothing to offer.
-  if (isStandalone) return null;
+  let chip: Chip | null = null;
 
-  if (updateReady) {
-    return (
-      <button
-        onClick={() => void applyUpdate()}
-        className="mb-4 w-full p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-700 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition hover:bg-blue-500/20"
-        role="status"
-      >
-        <RefreshCw className="h-4 w-4" />
-        UltraCC was updated — tap to refresh to the new version
+  if (updateReady && !updateHidden) {
+    // Rendered in the installed app too — that is precisely where it is needed.
+    // The worker never activates itself (see public/sw.js), so a Home Screen
+    // build keeps serving the shell it cached until the student says otherwise,
+    // and a fix that ships to the server can sit unseen on the phone. Short-circuiting
+    // every chip on `isStandalone` silenced the one notice an installed app needs.
+    chip = {
+      icon: <RefreshCw className="h-3.5 w-3.5" />,
+      text: <>UltraCC was updated — <b>refresh</b> to get the new version</>,
+      action: { label: 'Refresh', onClick: () => void applyUpdate() },
+      onDismiss: () => setUpdateHidden(true),
+      status: true,
+    };
+  } else if (!isStandalone && canInstall && !dismissed[INSTALL_KEY]) {
+    chip = {
+      icon: <ArrowDownToLine className="h-3.5 w-3.5" />,
+      text: <>Install UltraCC for a full-screen, offline app</>,
+      action: { label: 'Install', onClick: () => void promptInstall() },
+      onDismiss: () => dismiss(INSTALL_KEY),
+      status: false,
+    };
+  } else if (!isStandalone && isIOS && !dismissed[IOS_HINT_KEY]) {
+    chip = {
+      icon: <Share className="h-3.5 w-3.5" />,
+      text: <>Tap <Share className="uc-install-inline" /> Share, then <b>Add to Home Screen</b></>,
+      onDismiss: () => dismiss(IOS_HINT_KEY),
+      status: false,
+    };
+  }
+
+  if (!chip) return null;
+
+  return (
+    <div className="uc-install" role={chip.status ? 'status' : undefined}>
+      <span className="uc-install-ico" aria-hidden="true">{chip.icon}</span>
+      <span className="uc-install-text">{chip.text}</span>
+      {chip.action ? (
+        <button type="button" className="uc-install-act" onClick={chip.action.onClick}>{chip.action.label}</button>
+      ) : null}
+      <button type="button" className="uc-install-x" aria-label="Dismiss this hint" onClick={chip.onDismiss}>
+        <X className="h-3.5 w-3.5" />
       </button>
-    );
-  }
-
-  if (canInstall) {
-    return (
-      <button
-        onClick={() => void promptInstall()}
-        className="mb-4 w-full p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-700 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition hover:bg-emerald-500/20"
-        role="button"
-      >
-        <ArrowDownToLine className="h-4 w-4" />
-        Install UltraCC on this device for a full-screen, offline-capable app
-      </button>
-    );
-  }
-
-  if (isIOS && !iosHintDismissed) {
-    return (
-      <div className="mb-4 w-full p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-700 text-xs flex items-center gap-2">
-        <Share className="h-4 w-4 shrink-0" />
-        <span className="flex-1">
-          <b>Install UltraCC:</b> tap <Share className="inline h-3 w-3 -mt-0.5" /> Share, then “Add to Home Screen”.
-        </span>
-        <button onClick={dismissIosHint} aria-label="Dismiss install hint" className="p-1 opacity-60 hover:opacity-100 cursor-pointer">
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 };

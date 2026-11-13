@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { StudentProfile, TimetableSlot, AttendanceRecord } from '../types';
-import { UserRound, Search, ExternalLink, Users, BookOpen, School, MapPin } from 'lucide-react';
+import { Search, ExternalLink, School, BookOpen } from 'lucide-react';
+import { ProctorPerson } from './ProctorPerson';
+import { isReal } from '../utils/placeholders';
 
 interface FacultyViewProps {
   student: StudentProfile;
@@ -31,6 +33,11 @@ interface CourseFaculty {
   venue: string;
 }
 
+/**
+ * FacultyView — the student's own proctor, this semester's teaching faculty,
+ * and the official VIT Chennai directory. Presented as a ledger of records
+ * rather than a card wall, in the shared directory language.
+ */
 export const FacultyView: React.FC<FacultyViewProps> = ({ student, timetable, attendance }) => {
   const [query, setQuery] = useState('');
 
@@ -88,168 +95,118 @@ export const FacultyView: React.FC<FacultyViewProps> = ({ student, timetable, at
   }, [courses]);
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Header Banner */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div className="flex items-center space-x-4">
-          <div className="p-3.5 acc-soft border acc-border rounded-2xl acc-text">
-            <Users className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-0.5">
-              VIT Chennai · Faculty & Proctor
-            </div>
-            <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Faculty &amp; Proctor</h2>
-            <p className="text-xs text-zinc-500 mt-1 font-medium">
-              Your proctor from VTOP, this semester's faculty from your synced timetable, and the official VIT Chennai
-              faculty directory.
+    <div className="uc-dir-view pb-12">
+      {/* Mast */}
+      <div className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">VIT Chennai</span>
+            <h2 className="uc-dir-name">Faculty &amp; proctor</h2>
+            <p className="uc-note">
+              Your proctor from VTOP, this semester's faculty from your synced timetable, and the official VIT Chennai faculty directory.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Proctor card */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-600">
-            <UserRound className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-zinc-900 tracking-tight">My Proctor</h3>
-            <p className="text-xs text-zinc-500 font-medium">From your VTOP profile (proctor/viewProctorDetails)</p>
-          </div>
+      {/* Proctor */}
+      <div className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap">My proctor</span>
+          {student.proctorAvailable && isReal(student.proctorName) && <span className="uc-dir-tag is-good">Assigned</span>}
         </div>
-
-        {student.proctorAvailable && student.proctorName ? (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <p className="text-xl font-extrabold text-zinc-900">{student.proctorName}</p>
-              {student.proctorContact ? (
-                <p className="text-xs text-zinc-500 font-mono mt-1">{student.proctorContact}</p>
-              ) : (
-                <p className="text-xs text-zinc-500 mt-1">No contact details provided by VTOP.</p>
-              )}
-            </div>
-            <span className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-widest rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 self-start sm:self-auto">
-              Assigned
-            </span>
-          </div>
+        {student.proctorAvailable && isReal(student.proctorName) ? (
+          <ProctorPerson name={student.proctorName.trim()} contact={student.proctorContact} />
         ) : (
-          <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl text-xs text-zinc-500 flex items-start gap-2">
-            <BookOpen className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <span>
-              Proctor not available from VTOP{student.regNo ? ' for your profile' : ''}. Your proctor is assigned by
-              the school, so nothing is missing on your side — re-sync your profile from{' '}
-              <strong className="text-zinc-900">Login</strong> and it will appear once VTOP lists it.
-            </span>
+          <div className="uc-dir-detail">
+            <div className="uc-note-row">
+              <BookOpen />
+              <span>
+                Proctor not available from VTOP{student.regNo ? ' for your profile' : ''}. Your proctor is assigned by the school, so nothing is missing on your side — re-sync your profile from <b>Login</b> and it will appear once VTOP lists it.
+              </span>
+            </div>
           </div>
         )}
       </div>
 
-      {/* My Faculty this semester */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-blue-600">
-              <School className="h-6 w-6" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-zinc-900 tracking-tight">My Faculty This Semester</h3>
-              <p className="text-xs text-zinc-500 font-medium">
-                {courses.length} course{courses.length === 1 ? '' : 's'} · {facultyNames.length} facult{facultyNames.length === 1 ? 'y' : 'ies'} from synced timetable
-              </p>
-            </div>
-          </div>
-
-          <div className="relative w-full sm:w-64">
-            <Search className="h-3.5 w-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+      {/* My faculty this semester */}
+      <div className="uc-plate">
+        <div className="uc-plate-head">
+          <span className="uc-cap">My faculty this semester</span>
+          <span className="uc-dir-count">
+            {courses.length} course{courses.length === 1 ? '' : 's'} · {facultyNames.length} facult{facultyNames.length === 1 ? 'y' : 'ies'}
+          </span>
+        </div>
+        <div className="uc-dir-tools">
+          <div className="uc-dir-search">
+            <Search />
             <input
               aria-label="Search faculty or course"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search faculty or course..."
-              className="w-full bg-white border border-zinc-200 rounded-xl pl-9 pr-3 py-2.5 text-xs text-zinc-900 placeholder-zinc-500 focus:outline-none focus:border-blue-500 font-medium"
+              placeholder="Search faculty or course…"
             />
           </div>
         </div>
-
         {filtered.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filtered.map((c) => (
-              <div key={c.courseCode} className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="text-[10px] uppercase font-extrabold tracking-widest px-2 py-0.5 rounded bg-white text-blue-600 border border-zinc-200 font-mono">
-                      {c.courseCode}
+          <div className="uc-courses">
+            {filtered.map((c) => {
+              const venue = isReal(c.venue) ? c.venue.trim() : '';
+              return (
+                <div key={c.courseCode} className="uc-course uc-course--static">
+                  <span className="uc-course-head">
+                    <span>{c.courseCode}</span>
+                    {c.slots.length > 0 && <b>{c.slots.join(' · ')}</b>}
+                  </span>
+                  <strong>{c.courseTitle}</strong>
+                  <small>{isReal(c.faculty) ? c.faculty : 'Faculty not provided by VTOP'}</small>
+                  {venue && (
+                    <span className="uc-course-split">
+                      <span>Room <b>{venue}</b></span>
                     </span>
-                    <p className="text-xs font-bold text-zinc-900 mt-1.5 truncate">{c.courseTitle}</p>
-                  </div>
-                  {c.slots.length > 0 && (
-                    <span className="text-[10px] font-mono text-zinc-500 shrink-0">{c.slots.join(' · ')}</span>
                   )}
                 </div>
-                <div className="mt-3 space-y-1 text-[11px]">
-                  <p className="text-zinc-900 font-medium">
-                    <UserRound className="h-3 w-3 inline acc-text mr-1" />
-                    {c.faculty || <span className="text-zinc-600">Faculty not provided by VTOP</span>}
-                  </p>
-                  {c.venue && (
-                    <p className="text-zinc-500 font-mono flex items-center gap-1">
-                      <MapPin className="h-3 w-3" /> {c.venue}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="p-6 bg-zinc-50 border border-zinc-200 rounded-2xl text-xs text-zinc-500">
-            {query
-              ? `No course or faculty matches "${query}".`
-              : 'No timetable synced yet — log in to see your faculty for this semester.'}
+          <div className="uc-empty">
+            <span>
+              {query
+                ? `No course or faculty matches “${query.trim()}”.`
+                : 'No timetable synced yet — sign in to VTOP and sync to see your faculty for this semester.'}
+            </span>
           </div>
         )}
       </div>
 
       {/* Official directory */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
-        <div className="flex items-center space-x-3 mb-5">
-          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600">
-            <ExternalLink className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-zinc-900 tracking-tight">Official VIT Chennai Faculty Directory</h3>
-            <p className="text-xs text-zinc-500 font-medium">
-              Browse the official faculty pages at <span className="font-mono text-zinc-900">chennai.vit.ac.in</span> —
-              opens in a new tab.
-            </p>
-          </div>
+      <div className="uc-plate uc-dir-ledger">
+        <div className="uc-plate-head">
+          <span className="uc-cap">Official VIT Chennai faculty pages</span>
+          <span className="uc-dir-count">{DIRECTORY_LINKS.length} schools</span>
         </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {DIRECTORY_LINKS.map((link) => (
-            <a
-              key={link.url}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group p-4 bg-zinc-50 hover:bg-white border border-zinc-200 hover:border-zinc-300 rounded-2xl transition cursor-pointer flex flex-col justify-between gap-3"
-            >
-              <div>
-                <p className="text-sm font-extrabold text-zinc-900 group-hover:acc-text transition">{link.label}</p>
-                <p className="text-[10px] text-zinc-500 font-medium mt-0.5 leading-relaxed">{link.sub}</p>
-              </div>
-              <span className="text-[10px] font-bold text-zinc-500 group-hover:text-emerald-600 transition flex items-center gap-1">
-                Open <ExternalLink className="h-3 w-3" />
-              </span>
-            </a>
-          ))}
+        {DIRECTORY_LINKS.map((link) => (
+          <a
+            key={link.url}
+            href={link.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="uc-dir-row uc-dir-row--acts"
+          >
+            <span className="uc-dir-tile"><School /></span>
+            <span className="uc-dir-main">
+              <span className="uc-dir-title">{link.label}</span>
+              <span className="uc-dir-meta">{link.sub}</span>
+            </span>
+            <span className="uc-dir-acts">
+              <span className="uc-dir-go">Open <ExternalLink className="h-3.5 w-3.5" /></span>
+            </span>
+          </a>
+        ))}
+        <div className="uc-plate-foot">
+          <span>Names on this page come from your synced VTOP timetable; the links open the official chennai.vit.ac.in source.</span>
         </div>
-
-        <p className="text-[10px] text-zinc-600 mt-4 leading-relaxed">
-          Faculty names on this page come from your synced VTOP timetable; the directory links are the official
-          VIT Chennai source. Individual faculty pages live at <span className="font-mono">chennai.vit.ac.in/member/…</span>.
-        </p>
       </div>
     </div>
   );

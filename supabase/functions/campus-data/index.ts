@@ -50,14 +50,11 @@ import type { Club } from './datasets.ts';
 
 // ---------------------------------------------------------------------------
 // Upstream endpoints — server-side ONLY. The frontend never sees these.
-// Supplied as deploy-time environment variables (set with `supabase secrets
-// set`) so the public repository carries no third-party endpoint or account
-// detail. Empty when unconfigured — the handlers then report an honest error.
 // ---------------------------------------------------------------------------
-const CLUBS_UPSTREAM = Deno.env.get('CLUBS_UPSTREAM') || '';
-const TRANSPORT_UPSTREAM = Deno.env.get('TRANSPORT_UPSTREAM') || '';
-const KOHA_SEARCH_UPSTREAM = Deno.env.get('KOHA_SEARCH_UPSTREAM') || '';
-const KOHA_DETAIL_UPSTREAM = Deno.env.get('KOHA_DETAIL_UPSTREAM') || '';
+const CLUBS_UPSTREAM = 'https://api.amazecc.com/api/clubs/details';
+const TRANSPORT_UPSTREAM = 'https://api.amazecc.com/api/transport/routes';
+const KOHA_SEARCH_UPSTREAM = 'https://api.amazecc.com/api/koha/search';
+const KOHA_DETAIL_UPSTREAM = 'https://api.amazecc.com/api/koha/detail';
 
 const UPSTREAM_INIT: RequestInit = {
   headers: {

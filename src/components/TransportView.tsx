@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bus, Search, MapPin, Phone, ShieldCheck, Info, X, Clock, Navigation, UserRound, ChevronRight, RefreshCw } from 'lucide-react';
+import { Bus, Search, MapPin, Phone, Mail, ShieldCheck, Info, X, Navigation, UserRound, ChevronRight, RefreshCw } from 'lucide-react';
 import { TransportInfo } from '../lib/vtop/types';
 import transportSeed from '../data/transport.json';
 import { fetchCampus, type TransportSeed } from '../lib/campusClient';
+import { formatSyncStamp } from '../utils/timestamp';
+import { useDialog } from '../hooks/useDialog';
 
 interface BusStop {
   stopOrder: number;
@@ -45,17 +47,25 @@ const bundledSeed = transportSeed as unknown as TransportSeed;
 
 /**
  * TransportView — VIT Chennai day-scholar transport.
- * VIT Chennai transport route dataset: 110 routes with stops & pickup times,
- * supervisor/driver contacts, dispersal placements and bus rules — plus the
- * student's own VTOP registration when synced.
+ *
+ * Set as a route directory: the student's own registration leads as a record,
+ * then every route is one row (number, name, type, stops) that opens its own
+ * detail — stops, contacts and dispersal — on the timetable's rail. VIT Chennai
+ * transport dataset: 110 routes with stops & pickup times, supervisor/driver
+ * contacts, dispersal placements and bus rules.
  */
 export const TransportView: React.FC<TransportViewProps> = ({ transport }) => {
   const [query, setQuery] = useState('');
   const [type, setType] = useState<'all' | 'AC' | 'Non-AC'>('all');
   const [selected, setSelected] = useState<BusRouteFull | null>(null);
+  const routeRef = useDialog<HTMLDivElement>({ isOpen: Boolean(selected), onClose: () => setSelected(null) });
   const [refreshed, setRefreshed] = useState(false);
   const [seed, setSeed] = useState<TransportSeed>(bundledSeed);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  /** True when the live directory did not answer, so the routes on screen came
+   *  from this device or from the copy shipped with the app. */
+  const [stale, setStale] = useState(false);
+  const [attempted, setAttempted] = useState(false);
 
   // Sync the route directory through the UltraCC campus-data API (server-side
   // dataset; falls back to the bundled copy when unreachable).
@@ -65,6 +75,8 @@ export const TransportView: React.FC<TransportViewProps> = ({ transport }) => {
       setSeed(result.data);
       setSyncedAt(result.syncedAt);
     }
+    setStale(Boolean(result.stale) || !result.data);
+    setAttempted(true);
     return result;
   };
 
@@ -123,320 +135,276 @@ export const TransportView: React.FC<TransportViewProps> = ({ transport }) => {
   const tel = (phone: string) => (phone ? phone.replace(/[^0-9+]/g, '') : '');
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Transport</h2>
-          <p className="text-sm text-zinc-500 font-medium mt-1">
-            Bus routes, boarding points, pickup times &amp; contacts — VIT Chennai
-          </p>
-        </div>
-        <button
-          onClick={() => void refresh()}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl acc-bg text-zinc-900 text-xs font-bold acc-glow hover:opacity-90 transition cursor-pointer"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshed ? 'animate-spin' : ''}`} />
-          {refreshed ? 'Refreshing…' : 'Refresh Bus Data'}
-        </button>
-      </div>
-
-      {/* VTOP registration card */}
-      <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-600">
-            <ShieldCheck className="h-5 w-5" />
+    <div className="uc-dir-view">
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">VIT Chennai transport</span>
+            <h2 className="uc-dir-name">Bus routes &amp; boarding</h2>
+            <p className="uc-note">Routes, boarding points, pickup times and contacts.</p>
           </div>
-          <div>
-            <h3 className="text-base font-bold text-zinc-900 tracking-tight">My Transport Registration</h3>
-            <p className="text-xs text-zinc-500 font-medium">From VTOP — day-scholar transport registration</p>
+          <div className="uc-dir-rail">
+            <button onClick={() => void refresh()} className="uc-dir-go acc-bg">
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshed ? 'animate-spin' : ''}`} />
+              {refreshed ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* The student's own registration, from VTOP. */}
+      <section className="uc-plate">
+        <div className="uc-plate-head">
+          <div className="uc-dir-id">
+            <span className="uc-cap">My registration</span>
+            <p className="uc-note">From VTOP — day-scholar transport registration.</p>
           </div>
         </div>
 
         {!transport ? (
-          <p className="text-sm text-zinc-500">
-            Not synced yet — log in and sync to see your registered bus route here.
-          </p>
+          <div className="uc-dir-alert"><Info /><span>This is your own transport record, so it needs a VTOP sign-in. Sign in and refresh your data, and the bus you are registered for appears here.</span></div>
         ) : transport.hasRegistration ? (
           <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              ['Register No.', transport.registerNumber],
-              ['Name', transport.name],
-              ['Branch', transport.branch],
-              ['Route', transport.routeSelected],
-              ['Payment', transport.paymentStatus],
-              ['FP Ref', transport.fpReference],
-              ['Bus Route ID', transport.busRouteId],
-            ].map(([label, value]) =>
-              value ? (
-                <div key={label} className="bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2">
-                  <p className="text-[9px] uppercase tracking-wide text-zinc-500 font-bold">{label}</p>
-                  <p className="text-sm font-semibold text-zinc-900 mt-0.5 break-words">{value}</p>
-                </div>
-              ) : null
-            )}
-          </div>
-          {transport.qrCode && (
-            <div className="mt-4 flex flex-col items-center rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-              <div className="mb-3 flex w-full items-center gap-2 text-[10px] font-extrabold uppercase tracking-widest text-zinc-500"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Daily attendance QR from VTOP</div>
-              <img src={transport.qrCode} alt="VTOP transport attendance QR" className="h-48 w-48 rounded-xl bg-white p-2" />
-              <p className="mt-2 text-center text-[11px] text-zinc-500">Show this live QR at the bus when required.</p>
-            </div>
-          )}
-          {!transport.qrCode && (
-            <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-700">
-              VTOP did not return a daily attendance QR in this sync. Re-login and sync again; the app will show it here when VTOP provides it.
-            </div>
-          )}
-          {visibleRegistrationRows.length > 0 && <details className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-3"><summary className="cursor-pointer text-xs font-bold text-zinc-900">View all VTOP registration details</summary><div className="mt-3 grid gap-2 sm:grid-cols-2">{visibleRegistrationRows.map((row, index) => <div key={`${row.label}-${index}`} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"><p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">{row.label}</p><p className="mt-0.5 break-words text-xs text-zinc-900">{row.value || '—'}</p></div>)}</div></details>}
-
-          {registeredRoute && (
-            <div className="mt-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-700">Registered route details</p>
-                  <p className="mt-1 text-sm font-extrabold text-zinc-900">#{registeredRoute.routeNumber} · {registeredRoute.routeName}</p>
-                </div>
-                <span className="rounded-full border border-blue-400/20 bg-blue-400/10 px-2 py-1 text-[10px] font-bold text-blue-700">From route directory</span>
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {[['Supervisor', registeredRoute.supervisorName, registeredRoute.supervisorPhone], ['Driver', registeredRoute.driverName, registeredRoute.driverPhone]].map(([label, name, phone]) => (
-                  <div key={label} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                    <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">{label}</p>
-                    <p className="mt-0.5 text-xs font-semibold text-zinc-900">{name || 'Not published'}</p>
-                    {phone ? <a className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline" href={`tel:${tel(phone)}`}><Phone className="h-3 w-3" /> {phone}</a> : <p className="mt-1 text-[10px] text-zinc-500">Official contact not available</p>}
-                  </div>
-                ))}
-              </div>
-              {registeredRoute.stops.length > 0 && (
-                <p className="mt-3 text-[11px] text-zinc-500"><MapPin className="mr-1 inline h-3 w-3 text-blue-700" />{registeredRoute.stops.map((stop) => `${stop.stopName} (${stop.pickupTime})`).join(' · ')}</p>
+            <dl className="uc-facts">
+              {([
+                ['Register No.', transport.registerNumber],
+                ['Name', transport.name],
+                ['Branch', transport.branch],
+                ['Route', transport.routeSelected],
+                ['Payment', transport.paymentStatus],
+                ['FP Ref', transport.fpReference],
+                ['Bus Route ID', transport.busRouteId],
+              ] as [string, string | undefined][]).map(([label, value]) =>
+                value ? <div key={label}><dt>{label}</dt><dd>{value}</dd></div> : null
               )}
-            </div>
-          )}
-          {transport.hasRegistration && !registeredRoute && (
-            <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-500">
-              VTOP lists a registration for you, but its route number doesn't match any route in the published directory. Everything VTOP itself states is in the details above.
-            </div>
-          )}
+            </dl>
+
+            {transport.qrCode && (
+              <div className="uc-dir-detail">
+                <span className="uc-dir-subhead">Daily attendance QR from VTOP</span>
+                <img src={transport.qrCode} alt="VTOP transport attendance QR" className="uc-dir-qr" />
+                <p className="uc-dir-sub">Show this live QR at the bus when required.</p>
+              </div>
+            )}
+            {!transport.qrCode && (
+              <div className="uc-dir-alert"><Info /><span>VTOP did not return a daily attendance QR in this sync. Re-login and sync again; the app will show it here when VTOP provides it.</span></div>
+            )}
+
+            {registeredRoute && (
+              <div className="uc-dir-detail">
+                <span className="uc-dir-subhead">Registered route details</span>
+                <p className="uc-dir-sub is-ink"><b className="uc-num">#{registeredRoute.routeNumber}</b> · {registeredRoute.routeName}</p>
+                <div className="uc-dir-ledger">
+                  {([['Supervisor', registeredRoute.supervisorName, registeredRoute.supervisorPhone], ['Driver', registeredRoute.driverName, registeredRoute.driverPhone]] as [string, string, string][]).map(([label, name, phone]) => (
+                    <div key={label} className="uc-dir-row uc-dir-row--acts">
+                      <span className="uc-dir-tile"><UserRound className="h-4 w-4" /></span>
+                      <div className="uc-dir-main">
+                        <span className="uc-dir-title">{name || 'Not published'}</span>
+                        <span className="uc-dir-meta">{label}</span>
+                      </div>
+                      {phone
+                        ? <a className="uc-dir-go" href={`tel:${tel(phone)}`}><Phone className="h-3.5 w-3.5" /> Call</a>
+                        : <span className="uc-dir-tag">No number</span>}
+                    </div>
+                  ))}
+                </div>
+                {registeredRoute.stops.length > 0 && (
+                  <p className="uc-dir-sub uc-dir-sub--block"><MapPin className="uc-dir-inline" />{registeredRoute.stops.map((stop) => `${stop.stopName} (${stop.pickupTime})`).join(' · ')}</p>
+                )}
+              </div>
+            )}
+            {transport.hasRegistration && !registeredRoute && (
+              <div className="uc-dir-alert"><Info /><span>VTOP lists a registration for you, but its route number doesn&rsquo;t match any route in the published directory. Everything VTOP itself states is in the details above.</span></div>
+            )}
+
+            {visibleRegistrationRows.length > 0 && (
+              <details className="uc-dir-hiring uc-dir-hiring--pad">
+                <summary>View all VTOP registration details</summary>
+                <dl className="uc-facts">
+                  {visibleRegistrationRows.map((row, index) => (
+                    <div key={`${row.label}-${index}`}><dt>{row.label}</dt><dd>{row.value || '—'}</dd></div>
+                  ))}
+                </dl>
+              </details>
+            )}
           </>
         ) : (
-          <div className="flex items-start gap-3 p-4 bg-zinc-50 border border-zinc-200 rounded-2xl">
-            <Info className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-zinc-500">
-              No day-scholar transport registration found on VTOP for your account.
-              {transport.message ? ` ${transport.message}` : ''}
-            </p>
-          </div>
+          <div className="uc-dir-alert"><Info /><span>No day-scholar transport registration found on VTOP for your account.{transport.message ? ` ${transport.message}` : ''}</span></div>
         )}
-      </div>
+      </section>
 
       {/* Official transport help contact from the VIT transport rules. */}
-      <div className="bg-white border border-blue-500/20 rounded-3xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-extrabold text-zinc-900">Transport Helpdesk</p>
-          <p className="text-xs text-zinc-500 mt-1">For route timings, breakdowns, fees or cleanliness issues</p>
+      <section className="uc-plate uc-plate--quiet">
+        <div className="uc-note-row">
+          <Mail />
+          <span><b>Transport helpdesk.</b> For route timings, breakdowns, fees or cleanliness issues — <a className="uc-dir-inline-link" href="mailto:transport.cc@vit.ac.in">transport.cc@vit.ac.in</a></span>
         </div>
-        <a href="mailto:transport.cc@vit.ac.in" className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-zinc-900 text-xs font-extrabold transition">
-          <Phone className="h-3.5 w-3.5" /> transport.cc@vit.ac.in
-        </a>
-      </div>
+      </section>
 
-      {/* Search */}
-      {syncedAt && (
-        <p className="-mt-4 text-[10px] font-medium text-zinc-500">
-          Route directory synced {new Date(syncedAt).toLocaleString()} · served through the UltraCC campus-data service
-        </p>
-      )}
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-        <input
-          aria-label="Search bus routes, stops and drivers"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search route, stop, driver…"
-          className="w-full pl-10 pr-3 py-3 bg-white border border-zinc-200 rounded-2xl text-sm text-zinc-900 placeholder-zinc-500 outline-none focus:border-blue-500/60 transition"
-        />
-        <select
-          aria-label="Filter by bus type"
-          value={type}
-          onChange={(e) => setType(e.target.value as typeof type)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-900 outline-none cursor-pointer"
-          title="Filter bus type"
-        >
-          <option value="all">All</option>
-          <option value="AC">AC</option>
-          <option value="Non-AC">Non-AC</option>
-        </select>
-      </div>
+      {/* Search + filter */}
+      <section className="uc-plate uc-dir-mast">
+        <div className="uc-dir-tools">
+          <div className="uc-dir-search">
+            <Search />
+            <input
+              aria-label="Search bus routes, stops and drivers"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search route, stop, driver…"
+            />
+          </div>
+          <label className="sr-only" htmlFor="transport-type">Filter bus type</label>
+          <select
+            id="transport-type"
+            aria-label="Filter by bus type"
+            value={type}
+            onChange={(e) => setType(e.target.value as typeof type)}
+            className="uc-dir-select"
+          >
+            <option value="all">All buses</option>
+            <option value="AC">AC</option>
+            <option value="Non-AC">Non-AC</option>
+          </select>
+          <span className="uc-dir-count">{filtered.length} of {seed.routes.length}</span>
+        </div>
+        {/* Where these routes came from: the live directory, the last copy this
+            device received, or the set that shipped with the app. A student
+            comparing a pickup time against a notice board needs to know which. */}
+        {attempted && (
+          <p className="uc-dir-stamp">
+            <Info />
+            {syncedAt
+              ? `Route directory synced ${formatSyncStamp(syncedAt)}${stale ? ' · from the last copy on this device' : ''}`
+              : 'These are the routes that came with the app — the live directory did not answer.'}
+          </p>
+        )}
+      </section>
 
-      {/* Route grid */}
       {filtered.length === 0 ? (
-        <div className="p-10 bg-white border border-zinc-200 rounded-3xl text-center">
-          <Bus className="h-8 w-8 text-zinc-600 mx-auto mb-2" />
-          <p className="text-sm font-bold text-zinc-900">No routes match</p>
-          <p className="text-[11px] text-zinc-500 mt-1">Try a different route, stop or driver name.</p>
-        </div>
+        <section className="uc-plate">
+          <div className="uc-dir-blank">
+            <b>No routes match.</b> Try a different route, stop or driver name.
+          </div>
+        </section>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <section className="uc-plate uc-dir-ledger">
           {filtered.map((r) => (
-            <button
-              key={r.routeNumber}
-              onClick={() => setSelected(r)}
-              className="group bg-white border border-zinc-200 rounded-2xl p-4 text-left hover:border-blue-500/40 hover:bg-white transition cursor-pointer"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-lg bg-blue-500/15 text-blue-600 text-[10px] font-extrabold">
-                    #{r.routeNumber}
-                  </span>
-                  <p className="font-bold text-zinc-900 text-sm truncate">{r.routeName}</p>
+            <button key={r.routeNumber} onClick={() => setSelected(r)} className="uc-dir-row uc-dir-row--acts">
+              <span className="uc-dir-tile uc-dir-tile--num uc-dir-tile--lg">#{r.routeNumber}</span>
+              <div className="uc-dir-main">
+                <span className="uc-dir-title">{r.routeName}</span>
+                <span className="uc-dir-meta">{r.type} · {r.stops.length} {r.stops.length === 1 ? 'stop' : 'stops'}{r.stops[0]?.pickupTime ? ` · first pickup ${r.stops[0].pickupTime}` : ''}</span>
+                <div className="uc-dir-tags">
+                  {r.stops.slice(0, 3).map((s) => (
+                    <span key={s.stopOrder} className="uc-dir-tag"><MapPin /> {s.stopName}</span>
+                  ))}
+                  {r.stops.length > 3 && <span className="uc-dir-tag">+{r.stops.length - 3} more</span>}
                 </div>
-                {r.type === 'AC' ? (
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 border border-sky-500/20 shrink-0">AC</span>
-                ) : (
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shrink-0">Non-AC</span>
-                )}
               </div>
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {r.stops.slice(0, 4).map((s) => (
-                  <span key={s.stopOrder} className="inline-flex items-center gap-1 text-[10px] text-zinc-500 bg-white border border-zinc-200 rounded-full px-2 py-0.5">
-                    <MapPin className="h-2.5 w-2.5 text-zinc-500" /> {s.stopName}
-                  </span>
-                ))}
-                {r.stops.length > 4 && (
-                  <span className="text-[10px] text-zinc-600">+{r.stops.length - 4} more</span>
-                )}
-              </div>
-              <div className="mt-2.5 flex items-center justify-between text-[10px] text-zinc-500">
-                <span>{r.stops.length} {r.stops.length === 1 ? 'stop' : 'stops'} · {r.stops[0]?.pickupTime || ''}</span>
-                <ChevronRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition" />
-              </div>
-              <div className="mt-2 flex items-center gap-1.5 text-[10px] text-zinc-500">
-                <UserRound className="h-3 w-3" />
-                {r.driverPhone ? `${r.driverName || 'Driver'} · ${r.driverPhone}` : 'Driver contact not published'}
-              </div>
+              <span className="uc-dir-acts"><ChevronRight className="h-4 w-4" /></span>
             </button>
           ))}
-        </div>
+          <div className="uc-plate-foot">
+            <span>Route directory</span>
+            <span className="uc-num">{filtered.length}</span>
+          </div>
+        </section>
       )}
 
       {/* Bus rules */}
       {seed.rules.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-xl">
-          <h3 className="text-sm font-bold text-zinc-900 mb-3">Bus Rules</h3>
-          <ul className="space-y-2">
+        <section className="uc-plate">
+          <div className="uc-plate-head">
+            <div className="uc-dir-id">
+              <span className="uc-cap">Bus rules</span>
+              <p className="uc-note">The rules that come with the VIT Chennai transport dataset.</p>
+            </div>
+          </div>
+          <div className="uc-dir-ledger">
             {seed.rules.map((rule) => (
-              <li key={rule.ruleNumber} className="flex items-start gap-2.5 text-xs text-zinc-500">
-                <span className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded-md bg-white border border-zinc-200 text-zinc-500 text-[9px] font-bold mt-0.5">
-                  {rule.ruleNumber}
-                </span>
-                {rule.content}
-              </li>
+              <div key={rule.ruleNumber} className="uc-dir-row">
+                <span className="uc-dir-tile uc-dir-tile--num">{rule.ruleNumber}</span>
+                <div className="uc-dir-main"><p className="uc-dir-sub">{rule.content}</p></div>
+              </div>
             ))}
-          </ul>
-        </div>
+          </div>
+        </section>
       )}
 
       {/* Route detail modal */}
       {selected && (
         <div
-          className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+          className="uc-overlay fixed inset-0 z-[70]"
           onClick={() => setSelected(null)}
         >
-          <div
-            className="w-full sm:max-w-md max-h-[92dvh] overflow-y-auto bg-white border border-zinc-200 rounded-t-3xl sm:rounded-3xl shadow-2xl shadow-blue-500/10"
+          <div ref={routeRef} role="dialog" aria-modal="true" aria-label={"Route " + selected.routeNumber + " details"}
+            className="uc-sheet"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="sticky top-0 bg-white/95 backdrop-blur border-b border-zinc-200 px-5 py-4 flex items-center gap-3">
-              <span className="inline-flex items-center justify-center h-9 w-9 rounded-xl bg-blue-500/15 text-blue-600 text-sm font-extrabold">
-                #{selected.routeNumber}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-extrabold text-zinc-900 tracking-tight truncate">{selected.routeName}</p>
-                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{selected.type} BUS</p>
+            <div className="uc-plate-head uc-sheet-head">
+              <div className="uc-dir-id">
+                <span className="uc-cap">{selected.type} bus</span>
+                <h3 className="uc-dir-detail-title"><span className="uc-num">#{selected.routeNumber}</span> · {selected.routeName}</h3>
               </div>
-              <button onClick={() => setSelected(null)} className="p-2 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 transition cursor-pointer" title="Close">
+              <button onClick={() => setSelected(null)} className="uc-dir-ico" aria-label="Close route details">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              {/* Supervisor */}
+            <div className="uc-sheet-body">
               {(selected.supervisorName || selected.supervisorPhone) && (
-                <ContactCard
+                <ContactRow
                   icon={<ShieldCheck className="h-4 w-4" />}
-                  iconBg="bg-violet-500/10 text-violet-600 border-violet-500/20"
-                  label="SUPERVISOR"
+                  label="Supervisor"
                   name={selected.supervisorName || '—'}
                   phone={selected.supervisorPhone}
                 />
               )}
-
-              {/* Driver */}
               {(selected.driverName || selected.driverPhone) && (
-                <ContactCard
+                <ContactRow
                   icon={<Phone className="h-4 w-4" />}
-                  iconBg="bg-orange-500/10 text-orange-600 border-orange-500/20"
-                  label="DRIVER INCHARGE"
+                  label="Driver in charge"
                   name={selected.driverName || '—'}
                   phone={selected.driverPhone}
                 />
               )}
               {!selected.driverName && !selected.driverPhone && !selected.supervisorName && !selected.supervisorPhone && (
-                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-700">
-                  Driver and supervisor contacts are not published in the verified route data for this bus. Contact the VIT Transport Helpdesk at <a className="font-bold underline" href="mailto:transport.cc@vit.ac.in">transport.cc@vit.ac.in</a> for an official contact.
-                </div>
+                <div className="uc-dir-alert"><Info /><span>There is no driver or supervisor number on file for this route. Contact the VIT Transport Helpdesk at <a className="uc-dir-inline-link" href="mailto:transport.cc@vit.ac.in">transport.cc@vit.ac.in</a> and ask for it.</span></div>
               )}
 
-              {/* Stops & pickup times */}
-              <div className="bg-white border border-zinc-200 rounded-2xl p-4">
-                <p className="flex items-center gap-2 text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest mb-3">
-                  <Clock className="h-3.5 w-3.5" /> Stops &amp; Pickup Times
-                </p>
-                <div className="space-y-0">
-                  {selected.stops.map((s, i) => (
-                    <div key={s.stopOrder} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${i === 0 ? 'bg-emerald-400' : 'bg-emerald-400/40'} shrink-0`} />
-                        {i < selected.stops.length - 1 && <span className="w-px flex-1 bg-emerald-400/20" />}
-                      </div>
-                      <div className={`pb-3 ${i === selected.stops.length - 1 ? 'pb-0' : ''} flex-1 flex items-center justify-between gap-2`}>
-                        <span className="text-sm text-zinc-900 font-medium">{s.stopName}</span>
-                        <span className="text-[11px] font-mono text-blue-600 shrink-0">{s.pickupTime}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {selected.busLocation && (
-                  <p className="mt-3 pt-3 border-t border-zinc-200 text-[11px] text-zinc-500 flex items-center gap-1.5">
-                    <Navigation className="h-3.5 w-3.5" /> Live location: {selected.busLocation}
-                  </p>
-                )}
-                {selected.whatsappGroup && (
-                  <p className="mt-2 text-[11px] text-emerald-600">WhatsApp group: {selected.whatsappGroup}</p>
-                )}
+              <span className="uc-dir-subhead">Stops &amp; pickup times</span>
+              <div className="uc-rail">
+                {selected.stops.map((s, i) => (
+                  <div key={s.stopOrder} className={`uc-rail-row${i === 0 ? ' is-now' : ''}`}>
+                    <span className="uc-rail-time">{s.pickupTime}</span>
+                    <span className="uc-rail-spine" />
+                    <div className="uc-rail-main"><strong>{s.stopName}</strong></div>
+                  </div>
+                ))}
               </div>
+              {selected.busLocation && (
+                <p className="uc-dir-sub uc-dir-sub--block"><Navigation className="uc-dir-inline" /> Live location: {selected.busLocation}</p>
+              )}
+              {selected.whatsappGroup && (
+                <p className="uc-dir-sub">WhatsApp group: {selected.whatsappGroup}</p>
+              )}
 
-              {/* Dispersal */}
               {(() => {
                 const p = placementFor(selected.routeNumber);
                 if (!p) return null;
                 return (
-                  <div className="bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-4">
-                    <div className="flex flex-col items-center shrink-0">
-                      <span className="inline-flex items-center justify-center px-3 py-1.5 rounded-xl bg-blue-500/15 text-blue-600 text-sm font-extrabold">
-                        {p.dispersalTime}
-                      </span>
-                      <span className="text-[9px] uppercase tracking-widest text-zinc-500 font-bold mt-1.5">Dispersal</span>
+                  <>
+                    <span className="uc-dir-subhead">Dispersal</span>
+                    <div className="uc-dir-ledger">
+                      <div className="uc-dir-row uc-dir-row--acts">
+                        <span className="uc-dir-tile uc-dir-tile--num">{p.dispersalTime}</span>
+                        <div className="uc-dir-main">
+                          <span className="uc-dir-title">{p.zone}</span>
+                          <span className="uc-dir-meta">Dispersal zone for this route</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-bold text-zinc-900">{p.zone}</p>
-                      <p className="text-[10px] text-zinc-500 mt-0.5 flex items-center gap-1">
-                        <UserRound className="h-3 w-3" /> Dispersal zone for this route
-                      </p>
-                    </div>
-                  </div>
+                  </>
                 );
               })()}
             </div>
@@ -447,27 +415,18 @@ export const TransportView: React.FC<TransportViewProps> = ({ transport }) => {
   );
 };
 
-function ContactCard({
-  icon, iconBg, label, name, phone,
-}: {
-  icon: React.ReactNode; iconBg: string; label: string; name: string; phone?: string;
-}) {
+function ContactRow({ icon, label, name, phone }: { icon: React.ReactNode; label: string; name: string; phone?: string }) {
   const tel = phone ? phone.replace(/[^0-9+]/g, '') : '';
   return (
-    <div className="bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3">
-      <div className={`p-2.5 rounded-xl border ${iconBg}`}>{icon}</div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[9px] uppercase tracking-widest text-zinc-500 font-bold">{label}</p>
-        <p className="text-sm font-bold text-zinc-900 mt-0.5 truncate">{name}</p>
+    <div className="uc-dir-row uc-dir-row--acts">
+      <span className="uc-dir-tile">{icon}</span>
+      <div className="uc-dir-main">
+        <span className="uc-dir-title">{name}</span>
+        <span className="uc-dir-meta">{label}</span>
       </div>
-      {phone && (
-        <a
-          href={`tel:${tel}`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-zinc-200 text-[11px] font-bold text-zinc-900 hover:border-blue-500/50 hover:text-blue-600 transition cursor-pointer shrink-0"
-        >
-          <Phone className="h-3.5 w-3.5" /> Call
-        </a>
-      )}
+      {phone
+        ? <a className="uc-dir-go" href={`tel:${tel}`}><Phone className="h-3.5 w-3.5" /> Call</a>
+        : <span className="uc-dir-tag">No number</span>}
     </div>
   );
 }

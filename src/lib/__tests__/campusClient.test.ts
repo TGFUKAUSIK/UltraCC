@@ -10,8 +10,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fetchCampus, searchLibraryCatalogue, fetchBookDetail, clearCampusCaches } from '../campusClient';
+import { SUPABASE_URL } from '../edgeFetch';
 
-const EDGE_BASE = 'https://your-project.supabase.co/functions/v1/campus-data';
+const EDGE_BASE = `${SUPABASE_URL}/functions/v1/campus-data`;
 
 function okEnvelope(data: unknown, extra: Record<string, unknown> = {}) {
   return new Response(JSON.stringify({ success: true, data, syncedAt: '2026-09-06T12:00:00Z', ...extra }), {

@@ -15,11 +15,18 @@
  *
  * TLS: Sectigo-signed chain — same verified CA bundle as vtop-gateway, with
  * fallback to the default trust store (never disabling verification).
+ *
+ * POSTERS: `?poster=<eid>` re-serves an event poster through this function,
+ * because the Event Hub host sends an incomplete TLS chain that phones cannot
+ * repair. See poster.ts for why both addresses are handed to the client.
  */
+
+import { directPosterUrl, ORIGIN, posterIdFromUrl, proxyPosterUrl, publicFunctionUrl } from './poster.ts';
 
 // ---------------------------------------------------------------------------
 // TLS — Sectigo chain (verified against live certs, same as vtop-gateway)
 // ---------------------------------------------------------------------------
+
 const SECTIGO_INTERMEDIATE_CA = `-----BEGIN CERTIFICATE-----
 MIIGEzCCA/ugAwIBAgIQfVtRJrR2uhHbdBYLvFMNpzANBgkqhkiG9w0BAQwFADCB
 iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0pl
@@ -185,18 +192,32 @@ try {
   httpClient = null;
 }
 
-const ORIGIN = 'https://eventhubcc.vit.ac.in';
+interface HubEventOption {
+  type: string;
+  price: string;
+  eligibility: string;
+}
 
 interface HubEvent {
   eid: string;
   title: string;
-  eligibility: string;
-  type: string;
+  /** ISO "YYYY-MM-DD" when parseable, else the card's verbatim date cell. */
   date: string;
   location: string;
-  price: string;
+  /** Deterministic public poster route, keyed by event id. */
   posterUrl: string;
+  /** The same poster re-served by this function over a complete TLS chain, so
+   *  phones that cannot repair the origin's chain still get an image. */
+  posterProxy: string;
+  /** Deep link to the exact event's preview page (sign-in required there). */
   registerUrl: string;
+  teamSize: string;
+  // Primary (first-seen) values, so a card list shows one row per event.
+  type: string;
+  price: string;
+  eligibility: string;
+  /** Distinct type/price/eligibility combos across the deduped cards. */
+  options: HubEventOption[];
 }
 
 function corsHeaders(): Record<string, string> {
@@ -209,6 +230,40 @@ function corsHeaders(): Record<string, string> {
 
 function stripTags(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Normalize the card's date cell to ISO "YYYY-MM-DD". VTOP serves ISO already;
+ *  the other shapes are tolerated so a "Sep 28, 2026" or "28-09-2026" cell is
+ *  still usable for the TODAY / THIS WEEK buckets. Unparseable cells are kept
+ *  verbatim — never dropped, never re-dated. A cell that names a day that never
+ *  happened ("30-02-2026") counts as unparseable: re-dating it to March 2nd
+ *  would move the event, which is worse than leaving its own text alone.
+ *
+ *  MIRROR OF `isRealCalendarDate` in src/utils/examUtils.ts — this function
+ *  deploys standalone and cannot import from src/, so the copy is checked by
+ *  src/utils/__tests__/realDatesLiveOnce.test.ts. */
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+  if (year < 1000 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
+
+function isoDate(raw: string): string {
+  if (!raw) return '';
+  const s = raw.trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return isRealCalendarDate(+iso[1], +iso[2], +iso[3]) ? `${iso[1]}-${iso[2]}-${iso[3]}` : s;
+  const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmy) return isRealCalendarDate(+dmy[3], +dmy[2], +dmy[1]) ? `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}` : s;
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return s;
 }
 
 /** Text of the <span> that follows the given icon (non-greedy, first hit). */
@@ -237,9 +292,13 @@ function textAfterIcon(block: string, iconRe: RegExp): string {
  *
  * The card boundary is the NEXT `class="…card…"` div (or EOF) — never a
  * naive first `</div></div>` (that truncates before the button/eid).
+ * @param selfUrl this function's own PUBLIC address (see `publicFunctionUrl`),
+ *   used to build the poster proxy address. Left empty (tests, local
+ *   invocation, or a missing platform origin) the proxy simply repeats the
+ *   direct URL rather than inventing an endpoint that is not there.
  */
-export function parseEvents(html: string): HubEvent[] {
-  const out: HubEvent[] = [];
+export function parseEvents(html: string, selfUrl = ''): HubEvent[] {
+  const byEid = new Map<string, HubEvent>();
   const cardRe = /<div\b[^>]*class=["'][^"']*\bcard\b[^"']*["'][^>]*>/gi;
   const parts = html.split(cardRe);
   for (let i = 1; i < parts.length; i++) {
@@ -253,26 +312,38 @@ export function parseEvents(html: string): HubEvent[] {
     if (!eid || !title) continue;
 
     const eligibility = textAfterIcon(body, /fa-(?:people-carry-box|user-large)/i);
-    const date = textAfterIcon(body, /fa-calendar-days/i);
+    const date = isoDate(textAfterIcon(body, /fa-calendar-days/i));
     const location = textAfterIcon(body, /fa-map-location-dot/i);
     const price = textAfterIcon(body, /fa-indian-rupee-sign/i);
+    const teamSize = textAfterIcon(body, /fa-street-view/i);
     const type = body.match(/\(\s*<span\b[^>]*>([\s\S]*?)<\/span>\s*\)/i)?.[1]?.trim() || '';
-    const registerUrlRaw = body.match(/formaction=["']([^"']+)["']/i)?.[1] || '';
-    const registerUrl = registerUrlRaw
-      ? (registerUrlRaw.startsWith('http') ? registerUrlRaw : ORIGIN + registerUrlRaw)
-      : `${ORIGIN}/EventHub/`;
 
-    let posterUrl = body.match(/<img\b[^>]*src=["']([^"']+)["']/i)?.[1] || '';
-    if (!posterUrl) {
-      posterUrl = body.match(/background(?:-image)?\s*:\s*url\(['"]?([^'")]+)['"]?\)/i)?.[1] || '';
+    const existing = byEid.get(eid);
+    if (!existing) {
+      byEid.set(eid, {
+        eid,
+        title,
+        date,
+        location,
+        posterUrl: directPosterUrl(eid),
+        posterProxy: selfUrl ? proxyPosterUrl(selfUrl, eid) : directPosterUrl(eid),
+        registerUrl: `${ORIGIN}/EventHub/eventPreview?eid=${eid}`,
+        teamSize,
+        type,
+        price,
+        eligibility,
+        options: [{ type, price, eligibility }],
+      });
+    } else {
+      // Same event re-listed per pricing category: keep one event and record a
+      // distinct option only when the type/price/eligibility triple is new.
+      const seen = existing.options.some(
+        (o) => o.type === type && o.price === price && o.eligibility === eligibility,
+      );
+      if (!seen) existing.options.push({ type, price, eligibility });
     }
-    if (posterUrl && !posterUrl.startsWith('http') && !posterUrl.startsWith('data:')) {
-      posterUrl = posterUrl.startsWith('/') ? ORIGIN + posterUrl : `${ORIGIN}/EventHub/${posterUrl}`;
-    }
-
-    out.push({ eid, title, eligibility, type, date, location, price, posterUrl, registerUrl });
   }
-  return out;
+  return [...byEid.values()];
 }
 
 /** True for handshake rejections caused by an untrusted/rotated CA chain. */
@@ -305,8 +376,52 @@ async function fetchEventHubPage(): Promise<Response> {
   }
 }
 
+/** Re-serve one event poster through this function.
+ *
+ *  The origin's incomplete TLS chain is repairable by desktop Chrome and by
+ *  nothing on a phone, so `posterUrl` alone leaves iPhone and Android students
+ *  with a blank card. This route fetches the same bytes with the verified CA
+ *  client and answers from Supabase's own complete chain, which every client
+ *  trusts. The id is validated before it reaches the URL, and the upstream
+ *  host is a constant — this is a poster reader, not a general proxy. */
+async function fetchPoster(eid: string): Promise<Response> {
+  const opts: RequestInit & { client?: unknown } = {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
+      Referer: `${ORIGIN}/EventHub/`,
+    },
+  };
+  if (httpClient) opts.client = httpClient;
+  const res = await fetch(directPosterUrl(eid), opts);
+  if (!res.ok) throw new Error(`Poster upstream responded ${res.status}`);
+  const bytes = await res.arrayBuffer();
+  const type = /^image\//i.test(res.headers.get('content-type') || '') ? res.headers.get('content-type')! : 'image/jpeg';
+  return new Response(bytes, {
+    headers: {
+      ...corsHeaders(),
+      'Content-Type': type,
+      // The origin sends `no-store`; a poster is edited rarely, so caching one
+      // day here is what keeps a scrolling event list off the slow upstream.
+      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+    },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() });
+
+  const posterId = posterIdFromUrl(new URL(req.url).searchParams.get('poster'));
+  if (posterId) {
+    try {
+      return await fetchPoster(posterId);
+    } catch (err: unknown) {
+      // Never an HTML error page into an <img>: a clean 404 lets the client
+      // fall back to the direct URL or its placeholder.
+      console.error('[event-hub] poster fetch failed:', err instanceof Error ? err.message : String(err));
+      return new Response(null, { status: 404, headers: corsHeaders() });
+    }
+  }
+
   try {
     const res = await fetchEventHubPage();
     if (!res.ok) {
@@ -314,7 +429,7 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Event Hub responded ${res.status}`);
     }
     const html = await res.text();
-    const events = parseEvents(html);
+    const events = parseEvents(html, publicFunctionUrl(Deno.env.get('SUPABASE_URL'), req.url));
     return new Response(JSON.stringify({ success: true, events, syncedAt: Date.now() }), {
       headers: { ...corsHeaders(), 'Content-Type': 'application/json' },
     });

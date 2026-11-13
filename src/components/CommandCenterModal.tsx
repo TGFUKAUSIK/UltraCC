@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X, BookOpen, MapPin, Calculator, Sparkles, Navigation, Layers, HelpCircle, Briefcase } from 'lucide-react';
+import {
+  Search, X, BookOpen, MapPin, Calculator, Navigation, Layers, HelpCircle, Briefcase, LayoutDashboard,
+} from 'lucide-react';
 import { AttendanceRecord, ExamSchedule, CourseMarks, TimetableSlot } from '../types';
 import { buildPaletteIndex, searchPalette } from '../lib/commandPalette';
+import { useTargetAttendance } from '../lib/attendanceTarget';
 import type { FeatureMode } from '../lib/navVisibility';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useDialog } from '../hooks/useDialog';
@@ -31,6 +34,16 @@ const SUGGESTED_SEARCHES = [
   'bunk', 'CAT seating', 'free lab', 'mess menu', 'placement eligibility', 'ask ai',
 ];
 
+/** The destinations a student reaches often enough to want one keystroke away. */
+const QUICK_ACCESS: { tab: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { tab: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { tab: 'academics', label: 'Safe Bunk Calculator', icon: Calculator },
+  { tab: 'exams', label: 'CAT Seating & Exams', icon: Layers },
+  { tab: 'campus', label: 'Campus Location Finder', icon: MapPin },
+  { tab: 'fresher', label: 'Fresher FFCS Guide', icon: HelpCircle },
+  { tab: 'placement', label: 'Placement Eligibility', icon: Briefcase },
+];
+
 export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
   isOpen,
   onClose,
@@ -48,10 +61,14 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
   const panelRef = useDialog({ isOpen, onClose });
 
   // Search reaches REAL synced records: courses, faculty, venues, exams,
-  // attendance and marks — rebuilt only when the underlying data changes.
+  // attendance and marks — rebuilt when the data changes OR when the student
+  // moves the attendance bar. This modal mounts once for the whole session, so
+  // an index built at mount would otherwise keep quoting the bar from before
+  // the slider was touched.
+  const [targetAttendance] = useTargetAttendance();
   const paletteIndex = useMemo(
-    () => buildPaletteIndex({ timetable, attendance, exams, marks }, mode),
-    [timetable, attendance, exams, marks, mode],
+    () => buildPaletteIndex({ timetable, attendance, exams, marks, targetAttendance }, mode),
+    [timetable, attendance, exams, marks, mode, targetAttendance],
   );
   const results = useMemo(() => searchPalette(paletteIndex, query), [paletteIndex, query]);
 
@@ -94,7 +111,7 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
 
   return (
     <div
-      className="mobile-search-shell fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-zinc-50 backdrop-blur-md animate-fadeIn"
+      className="uc-scrim mobile-search-shell fixed inset-0 flex items-start justify-center pt-16 sm:pt-24 px-4"
       onKeyDown={handleKeyDown}
       // The backdrop is the largest target in this dialog and used to do
       // nothing. The self-target check means only a click that lands on the
@@ -103,20 +120,19 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
     >
       <div
         ref={panelRef}
-        className="mobile-search-panel w-full max-w-2xl bg-white border border-zinc-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80dvh]"
+        className="mobile-search-panel uc-plate uc-sheet"
         role="dialog"
         aria-modal="true"
         aria-label="Search UltraCC"
       >
-        {/* Search Input Bar */}
-        <div className="relative border-b border-zinc-200 p-4 flex items-center">
-          <Search className="h-5 w-5 text-indigo-600 mr-3 shrink-0" />
+        {/* Search input bar */}
+        <div className="uc-pal-bar">
+          <Search aria-hidden="true" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search courses, faculty, rooms, exams, services…"
-            className="w-full bg-transparent text-zinc-900 text-sm sm:text-base placeholder-zinc-500 focus:outline-none"
             autoFocus
             role="combobox"
             aria-expanded={hasQuery}
@@ -125,68 +141,64 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
             aria-label="Search courses, faculty, rooms, exams, services"
           />
           {query && (
-            <button onClick={() => setQuery('')} className="p-1 text-zinc-500 hover:text-zinc-900 mr-2" aria-label="Clear search">
-              <X className="h-4 w-4" />
+            <button type="button" onClick={() => setQuery('')} className="uc-dir-ico" aria-label="Clear search" title="Clear search">
+              <X aria-hidden="true" />
             </button>
           )}
           <button
+            type="button"
             onClick={onClose}
-            className="mobile-search-close p-2 text-zinc-500 hover:text-zinc-900 rounded-lg border border-zinc-200 cursor-pointer"
+            className="mobile-search-close uc-dir-ico"
             aria-label="Close search"
             title="Close search"
           >
-            <X className="h-4 w-4" aria-hidden="true" />
+            <X aria-hidden="true" />
           </button>
         </div>
 
-        {/* Content Area */}
-        <div className="p-4 overflow-y-auto space-y-4">
+        {/* Content */}
+        <div className="uc-pal-body">
           {hasQuery ? (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-2" aria-live="polite">
+              <p className="uc-pal-note" aria-live="polite">
                 {results.length > 0 ? `Search results (${results.length})` : 'No matches'}
               </p>
-              <div className="space-y-2" role="listbox" id="ultracc-palette-results" ref={listRef}>
+              <div className="uc-pal-list" role="listbox" id="ultracc-palette-results" ref={listRef}>
                 {results.map((res, index) => {
-                  const Icon = CATEGORY_ICONS[res.category] ?? Sparkles;
+                  const Icon = CATEGORY_ICONS[res.category] ?? Navigation;
                   return (
                     <button
                       key={res.id}
+                      type="button"
                       id={`ultracc-palette-option-${index}`}
                       data-palette-index={index}
                       role="option"
                       aria-selected={index === activeIndex}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => select(res.tab)}
-                      className={`w-full text-left p-3 border rounded-xl cursor-pointer transition flex items-center justify-between group ${
-                        index === activeIndex
-                          ? 'bg-indigo-50 border-indigo-500/50'
-                          : 'bg-zinc-100 border-zinc-200 hover:border-indigo-500/50'
-                      }`}
+                      className={`uc-pal-row${index === activeIndex ? ' is-on' : ''}`}
                     >
-                      <div className="flex items-start space-x-3 min-w-0">
-                        <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 shrink-0">
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-semibold text-zinc-900 truncate">{res.title}</h4>
-                          <p className="text-xs text-zinc-500 mt-0.5 truncate">{res.subtitle}</p>
-                        </div>
-                      </div>
-                      <span className="text-xs text-indigo-600 shrink-0 ml-3 flex items-center gap-1 font-medium">
-                        {index === activeIndex ? <><span className="hidden sm:inline">Open</span> <Navigation className="h-3 w-3" /></> : <span className="text-[10px] px-2 py-0.5 rounded bg-white border border-zinc-200 text-zinc-500">{res.category}</span>}
+                      <span className="uc-pal-row-main">
+                        <Icon aria-hidden="true" />
+                        <span className="uc-pal-row-text">
+                          <b>{res.title}</b>
+                          <small>{res.subtitle}</small>
+                        </span>
+                      </span>
+                      <span className="uc-pal-row-go">
+                        {index === activeIndex
+                          ? (<><span className="uc-pal-hide-sm">Open</span> <Navigation aria-hidden="true" /></>)
+                          : <span className="uc-dir-tag">{res.category}</span>}
                       </span>
                     </button>
                   );
                 })}
                 {results.length === 0 && (
-                  <div className="p-4 bg-zinc-100 border border-zinc-200 rounded-xl text-xs text-zinc-500 space-y-2">
-                    <p>Nothing matched <strong className="text-zinc-900">“{query}”</strong> in your synced data.</p>
-                    <div className="flex flex-wrap gap-1.5">
+                  <div className="uc-pal-blank">
+                    <p>Nothing matched <b>“{query}”</b> in your synced data.</p>
+                    <div className="uc-chips">
                       {SUGGESTED_SEARCHES.map((s) => (
-                        <button key={s} onClick={() => setQuery(s)} className="px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-900 hover:border-indigo-500/50 text-[11px] cursor-pointer">
-                          {s}
-                        </button>
+                        <button key={s} type="button" onClick={() => setQuery(s)}>{s}</button>
                       ))}
                     </div>
                   </div>
@@ -194,73 +206,26 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
               </div>
             </div>
           ) : (
-            /* Default Quick Launch & Suggested Commands */
-            <div className="space-y-4">
+            <div className="uc-pal-home">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                Quick access
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    onClick={() => select('dashboard')}
-                    className="p-2.5 bg-zinc-100 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs font-medium text-zinc-900 flex items-center space-x-2 cursor-pointer"
-                  >
-                    <BookOpen className="h-4 w-4 text-indigo-600" />
-                    <span>Dashboard</span>
-                  </button>
-                  <button
-                    onClick={() => select('academics')}
-                    className="p-2.5 bg-zinc-100 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs font-medium text-zinc-900 flex items-center space-x-2 cursor-pointer"
-                  >
-                    <Calculator className="h-4 w-4 text-emerald-600" />
-                    <span>Safe Bunk Calculator</span>
-                  </button>
-                  <button
-                    onClick={() => select('exams')}
-                    className="p-2.5 bg-zinc-100 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs font-medium text-zinc-900 flex items-center space-x-2 cursor-pointer"
-                  >
-                    <Layers className="h-4 w-4 text-rose-600" />
-                    <span>CAT Seating & Exams</span>
-                  </button>
-                  <button
-                    onClick={() => select('campus')}
-                    className="p-2.5 bg-zinc-100 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs font-medium text-zinc-900 flex items-center space-x-2 cursor-pointer"
-                  >
-                    <MapPin className="h-4 w-4 text-amber-600" />
-                    <span>Campus Location Finder</span>
-                  </button>
-                  <button
-                    onClick={() => select('fresher')}
-                    className="p-2.5 bg-zinc-100 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs font-medium text-zinc-900 flex items-center space-x-2 cursor-pointer"
-                  >
-                    <HelpCircle className="h-4 w-4 text-teal-600" />
-                    <span>Fresher FFCS Guide</span>
-                  </button>
-                  <button
-                    onClick={() => select('placement')}
-                    className="p-2.5 bg-zinc-100 hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs font-medium text-zinc-900 flex items-center space-x-2 cursor-pointer"
-                  >
-                    <Briefcase className="h-4 w-4 text-purple-600" />
-                    <span>Placement Eligibility</span>
-                  </button>
+                <p className="uc-pal-note">Quick access</p>
+                <div className="uc-pal-quick">
+                  {QUICK_ACCESS.map(({ tab, label, icon: Icon }) => (
+                    <button key={tab} type="button" onClick={() => select(tab)}>
+                      <Icon aria-hidden="true" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-                Suggested searches
-                </p>
-                <div className="space-y-1.5">
+                <p className="uc-pal-note">Suggested searches</p>
+                <div className="uc-pal-sug">
                   {SUGGESTED_SEARCHES.map((cmd) => (
-                    <button
-                      key={cmd}
-                      onClick={() => setQuery(cmd)}
-                      className="w-full text-left p-2.5 rounded-lg bg-zinc-100 hover:bg-zinc-100 text-xs text-zinc-900 flex items-center justify-between border border-zinc-200 hover:border-zinc-200 transition cursor-pointer"
-                    >
-                      <span className="font-medium text-zinc-900">“{cmd}”</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-white border border-zinc-200 text-zinc-500">
-                        Try it
-                      </span>
+                    <button key={cmd} type="button" onClick={() => setQuery(cmd)}>
+                      <span>“{cmd}”</span>
+                      <span>Try it</span>
                     </button>
                   ))}
                 </div>
@@ -269,13 +234,13 @@ export const CommandCenterModal: React.FC<CommandCenterModalProps> = ({
           )}
         </div>
 
-        {/* Footer info */}
-        <div className="p-3 bg-white border-t border-zinc-200 text-zinc-500 text-[11px] flex items-center justify-between">
+        {/* Footer */}
+        <div className="uc-pal-foot">
           <span>UltraCC Student Portal Search</span>
-          <span className="flex items-center gap-2">
-            <span><kbd className="px-1 py-0.5 bg-zinc-100 rounded border border-zinc-200">↑↓</kbd> navigate</span>
-            <span><kbd className="px-1 py-0.5 bg-zinc-100 rounded border border-zinc-200">Enter</kbd> open</span>
-            <span><kbd className="px-1 py-0.5 bg-zinc-100 rounded border border-zinc-200">ESC</kbd> exit</span>
+          <span className="uc-pal-keys">
+            <span><kbd>↑↓</kbd> navigate</span>
+            <span><kbd>Enter</kbd> open</span>
+            <span><kbd>ESC</kbd> exit</span>
           </span>
         </div>
       </div>

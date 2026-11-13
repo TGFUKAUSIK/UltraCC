@@ -107,6 +107,47 @@ describe('gateway parseAttendanceHtml', () => {
     expect(records[1]).toMatchObject({ courseCode: 'EEE1001', percentage: 83.3 });
   });
 
+  it('recomputes a missing percentage in the same tenths VTOP itself shows', () => {
+    // The gateway writes the number every card on every client reads, so its
+    // rounding used to be the loudest version of the bug: VTOP shows "66.66" for
+    // 2/3 and the app prints "66.6", but a course whose percentage cell came back
+    // empty was stored as 66.7 — one course, two figures, depending on a column.
+    const html = `<!doctype html>
+<html><body>
+<table class="table">
+  <thead><tr>
+    <th>Course Code</th><th>Slot</th><th>Total</th><th>Attended</th><th>Percentage</th><th>Course Title</th><th>Course Type</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>CSE3001</td><td>A1</td><td>3</td><td>2</td><td>—</td><td>Compiler Design</td><td>ETH</td></tr>
+    <tr><td>CSE3002</td><td>B1</td><td>3</td><td>2</td><td>66.66%</td><td>Computer Networks</td><td>ETH</td></tr>
+  </tbody>
+</table></body></html>`;
+    const records = parseAttendanceHtml(html);
+    expect(records).toHaveLength(2);
+    // 2/3 truncated to the tenth — the figure the client's label prints, so the
+    // stored value and the sentence under it cannot disagree.
+    expect(records[0].percentage).toBe(66.6);
+    // VTOP's own cell stays the authority, decimals and all.
+    expect(records[1].percentage).toBe(66.66);
+  });
+
+  it('will not hand a course the 75% it has not reached', () => {
+    // 7496/10000 is 74.96%. Rounding to a tenth said 75.0 and the sheet, the
+    // cards and the debar filter all agreed the student was clear.
+    const html = `<!doctype html>
+<html><body>
+<table class="table">
+  <thead><tr>
+    <th>Course Code</th><th>Slot</th><th>Total</th><th>Attended</th><th>Percentage</th><th>Course Title</th><th>Course Type</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>CSE4001</td><td>A1</td><td>10000</td><td>7496</td><td>—</td><td>Threshold Study</td><td>ETH</td></tr>
+  </tbody>
+</table></body></html>`;
+    expect(parseAttendanceHtml(html)[0].percentage).toBe(74.9);
+  });
+
   it('returns [] for explicit no-data pages and login pages', () => {
     expect(parseAttendanceHtml(attendanceMalformedHtml)).toEqual([]); // "No attendance data available..."
     expect(parseAttendanceHtml(loginPageHtml)).toEqual([]);
@@ -252,6 +293,37 @@ describe('gateway parseMarksHtml', () => {
     expect(r.fat).toMatchObject({ maxMarks: 100, scored: 0, status: 'Pending' });
   });
 
+  it('keeps a "Not Evaluated" row pending and does not misread "Applicable" as absent', () => {
+    // Three defects this pins at once:
+    //   1. VTOP's negated statuses used to fall through to 'Evaluated', so an
+    //      exam that has not been held published a real-looking 0/50 and
+    //      dragged every internal total and Course Intel number down.
+    //   2. A stray number in the Scored cell must not outrank the portal's own
+    //      status word — the row is still ungraded.
+    //   3. A substring test on 'ab' also fires on 'Applicable', which used to
+    //      throw away a genuine score.
+    const inner = [
+      ['1', 'Continuous Assessment Test - I', '50', '15', 'Evaluated', '42', '12.6'],
+      ['2', 'Continuous Assessment Test - II', '50', '15', 'Not Evaluated', '0', ''],
+      ['3', 'Quiz - I', '10', '10', 'Not Graded', '7', ''],
+      ['4', 'Assignment - I', '5', '2.5', 'Applicable', '4', '2'],
+      ['5', 'Final Assessment Test', '100', '50', 'Not Declared', '', ''],
+    ].map((c) => `<tr><td>${c.join('</td><td>')}</td></tr>`).join('');
+    const html = `<html><body><table class="customTable">
+      <tr><td>1</td><td>1001</td><td>BAEEE102</td><td>Circuit Theory</td><td>ETH</td><td>REG</td><td>Dr. X</td><td>A1</td><td>Theory</td></tr>
+      <tr><td colspan="9"><table class="customTable-level1"><tr><th>S.No</th><th>Title</th><th>Max Mark</th><th>Weightage %</th><th>Status</th><th>Scored Mark</th><th>Weightage Mark</th></tr>${inner}</table></td></tr>
+    </table></body></html>`;
+    const r = parseMarksHtml(html)[0];
+    expect(r.cat1).toMatchObject({ scored: 42, status: 'Evaluated' });
+    expect(r.cat2).toMatchObject({ scored: 0, status: 'Pending' });
+    expect(r.quiz).toMatchObject({ scored: 0, status: 'Pending' });
+    expect(r.da1).toMatchObject({ scored: 4, status: 'Evaluated' });
+    expect(r.fat).toMatchObject({ scored: 0, status: 'Pending' });
+    // Only the two genuinely graded rows may contribute to the internal total:
+    // 12.6 (CAT 1 weightage mark) + 2 (Assignment weightage mark).
+    expect(r.totalInternalWeightScored).toBe(14.6);
+  });
+
   it('merges theory + lab assessment tables for the same course into ONE row', () => {
     const tableFor = (assessments: string[][]) =>
       `<table class="customTable-level1"><tr><th>S.No</th><th>Title</th><th>Max</th><th>Wt%</th><th>Status</th><th>Scored</th><th>Wt Mark</th></tr>` +
@@ -278,6 +350,52 @@ describe('gateway parseMarksHtml', () => {
     expect(r.da1).toMatchObject({ scored: 4, status: 'Evaluated' });
     expect(r.quiz).toMatchObject({ scored: 7, status: 'Evaluated' });
     expect(r.fat).toBeDefined();
+  });
+
+  it('keeps a second row mapped to a filled slot instead of overwriting the first', () => {
+    // Two quiz papers in one table (Quiz - I and Quiz - II) both map to the
+    // `quiz` slot. The old assignment replaced the first row, so only the
+    // later mark and weight counted; both are VTOP's data and both must count.
+    const inner = [
+      ['1', 'Quiz - I', '10', '10', 'Evaluated', '7', '7'],
+      ['2', 'Quiz - II', '10', '10', 'Evaluated', '6', '6'],
+    ].map((c) => `<tr><td>${c.join('</td><td>')}</td></tr>`).join('');
+    const html = `<html><body><table class="customTable">
+      <tr><td>1</td><td>1001</td><td>BCSE2001</td><td>Course</td><td>ETH</td><td>REG</td><td>Dr. X</td><td>A1</td><td>Theory</td></tr>
+      <tr><td colspan="9"><table class="customTable-level1"><tr><th>S.No</th><th>Title</th><th>Max Mark</th><th>Weightage %</th><th>Status</th><th>Scored Mark</th><th>Weightage Mark</th></tr>${inner}</table></td></tr>
+    </table></body></html>`;
+    const r = parseMarksHtml(html)[0];
+    expect(r.quiz).toMatchObject({ title: 'Quiz - I', scored: 7, weightageMax: 10, status: 'Evaluated' });
+    expect(r.extraComponents).toEqual([
+      expect.objectContaining({ title: 'Quiz - II', scored: 6, weightageMax: 10, status: 'Evaluated' }),
+    ]);
+    // Both quiz weightage marks stack: 7 + 6.
+    expect(r.totalInternalWeightScored).toBe(13);
+  });
+
+  it('keeps a declared-but-pending row that loses its slot to a graded one', () => {
+    // Theory half declares "Quiz - I" pending; the lab half has a graded quiz.
+    // The graded row owns the slot, but the pending row still carries weight
+    // VTOP declared, so it is shown as an extra rather than dropped.
+    const tableFor = (rows: string[][]) =>
+      `<table class="customTable-level1"><tr><th>S.No</th><th>Title</th><th>Max</th><th>Wt%</th><th>Status</th><th>Scored</th><th>Wt Mark</th></tr>` +
+      rows.map((c) => `<tr><td>${c.join('</td><td>')}</td></tr>`).join('') + '</table>';
+    const html = `<html><body><table class="customTable">
+      <tr><td>1</td><td>1001</td><td>BAEEE204</td><td>EMFT</td><td>ETH</td><td>REG</td><td>Dr. Y</td><td>D1</td><td>Theory</td></tr>
+      <tr><td colspan="9">${tableFor([
+        ['1', 'Continuous Assessment Test - I', '50', '15', 'Evaluated', '42', '12.6'],
+        ['2', 'Quiz - I', '10', '10', 'Pending', '', ''],
+      ])}</td></tr>
+      <tr><td>2</td><td>1002</td><td>BAEEE204</td><td>EMFT Lab</td><td>ELA</td><td>REG</td><td>Dr. Y</td><td>D1</td><td>Lab</td></tr>
+      <tr><td colspan="9">${tableFor([
+        ['1', 'Quiz - I', '10', '10', 'Evaluated', '8', '8'],
+      ])}</td></tr>
+    </table></body></html>`;
+    const r = parseMarksHtml(html)[0];
+    expect(r.quiz).toMatchObject({ scored: 8, status: 'Evaluated' });
+    expect(r.extraComponents).toEqual([
+      expect.objectContaining({ title: 'Quiz - I', status: 'Pending', weightageMax: 10 }),
+    ]);
   });
 
   it('maps soft-skill "Assessment - N" to DA N (theory half) and captures DA 3', () => {
@@ -418,11 +536,11 @@ describe('gateway parseProfileHtml', () => {
   it('reads the hidden regno input and label/value pairs (first-match)', () => {
     const profile = parseProfileHtml(profileRealHtml);
     expect(profile).toMatchObject({
-      registrationNo: '23BCE1082',
-      name: 'Kausik R',
+      registrationNo: '23BCE0000',
+      name: 'Aarav R',
       program: 'UG',
       school: 'SCOPE',
-      email: 'kausik.r2023@vitstudent.ac.in',
+      email: 'student.name2025@vitstudent.ac.in',
       mobile: '9876543210',
     });
     // Regression (verified on the live Chennai profile): the only row whose
@@ -435,9 +553,9 @@ describe('gateway parseProfileHtml', () => {
     // Regression: proctor contact must come from PROCTOR-prefixed labels only.
     // The student's own Email/Mobile block appears FIRST on the page — the old
     // generic fallback patterns stored the student's address as the proctor's.
-    expect(profile.proctorEmail).toBe('r.ramanathan@vit.ac.in');
+    expect(profile.proctorEmail).toBe('faculty.name@vit.ac.in');
     expect(profile.proctorMobile).toBe('9445500123');
-    expect(profile.proctorEmail).not.toBe('kausik.r2023@vitstudent.ac.in');
+    expect(profile.proctorEmail).not.toBe('student.name2025@vitstudent.ac.in');
     expect(profile.proctorMobile).not.toBe('9876543210');
   });
 
@@ -450,35 +568,35 @@ describe('gateway parseProfileHtml', () => {
   });
 
   it('extracts the VTOP-labelled student photo source without exposing unrelated images', () => {
-    const html = '<input name="regno" value="23BCE1082"><img id="studentPhoto" alt="Student photo" src="/vtop/assets/profile/photo.jpg"><img alt="VIT logo" src="/vtop/assets/img/logo.png">';
+    const html = '<input name="regno" value="23BCE0000"><img id="studentPhoto" alt="Student photo" src="/vtop/assets/profile/photo.jpg"><img alt="VIT logo" src="/vtop/assets/img/logo.png">';
     expect(extractProfilePhotoSource(html)).toBe('/vtop/assets/profile/photo.jpg');
   });
 
   it('accepts a bare unlabeled inline data URI large enough to be a photo (Chennai portal shape)', () => {
     // Real photos are tens of KB of base64; UI icons are far below the floor.
     const bigPhoto = `data:image/jpeg;base64,${'A'.repeat(40_000)}`;
-    const html = `<input name="regno" value="23BCE1082"><img src="${bigPhoto}"><img alt="VIT logo" src="/vtop/assets/img/logo.png">`;
+    const html = `<input name="regno" value="23BCE0000"><img src="${bigPhoto}"><img alt="VIT logo" src="/vtop/assets/img/logo.png">`;
     expect(extractProfilePhotoSource(html)).toBe(bigPhoto);
   });
 
   it('accepts VTOP\'s real "data:null;base64" MIME and normalizes it from magic bytes', () => {
     // A real JPEG starts /9j/ in base64. VTOP mislabels it as data:null.
     const jpegPayload = '/9j/' + 'A'.repeat(40_000);
-    const html = `<input name="regno" value="23BCE1082"><img src="data:null;base64,${jpegPayload}">`;
+    const html = `<input name="regno" value="23BCE0000"><img src="data:null;base64,${jpegPayload}">`;
     expect(extractProfilePhotoSource(html)).toBe(`data:image/jpeg;base64,${jpegPayload}`);
   });
 
   it('still ignores small unlabeled data-URI icons below the photo size floor', () => {
     const tinyIcon = 'data:image/png;base64,AAAA';
-    const html = `<input name="regno" value="23BCE1082"><img src="${tinyIcon}">`;
+    const html = `<input name="regno" value="23BCE0000"><img src="${tinyIcon}">`;
     expect(extractProfilePhotoSource(html)).toBeUndefined();
   });
 
   it('also accepts the legacy label-pair shape with a plausible regno', () => {
-    const legacy = '<table><tr><td>Reg No</td><td>23BCE1082</td></tr><tr><td>Student Name</td><td>Kausik</td></tr></table>';
+    const legacy = '<table><tr><td>Reg No</td><td>23BCE0000</td></tr><tr><td>Student Name</td><td>Aarav</td></tr></table>';
     const profile = parseProfileHtml(legacy);
-    expect(profile.registrationNo).toBe('23BCE1082');
-    expect(profile.name).toBe('Kausik');
+    expect(profile.registrationNo).toBe('23BCE0000');
+    expect(profile.name).toBe('Aarav');
   });
 
   it('throws ParseError when no plausible registration number exists', () => {
@@ -611,7 +729,7 @@ describe('gateway parseProctorHtml (proctor/viewProctorDetails)', () => {
   it('extracts the proctor name/email/mobile/designation from label/value rows', () => {
     const p = parseProctorHtml(proctorHtml);
     expect(p.name).toBe('Dr. R. Ramanathan');
-    expect(p.email).toBe('r.ramanathan@vit.ac.in');
+    expect(p.email).toBe('faculty.name@vit.ac.in');
     expect(p.mobile).toBe('9876501234');
     expect(p.designation).toBe('Associate Professor');
   });
@@ -662,7 +780,14 @@ describe('gateway OD parsers (processViewAttendanceDetail)', () => {
     </table></body></html>`;
     const c = parseAttendanceDetail(detailHtml);
     // 2-period lab (14:00-15:40) counts as 2 hours; the 50-min slot as 1.
-    expect(c).toEqual({ present: 1, absent: 1, onDuty: 2, total: 4, odHours: 3 });
+    expect(c).toMatchObject({ present: 1, absent: 1, onDuty: 2, total: 4, odHours: 3 });
+    // The same rows surface as date-wise attendance, in VTOP's own order.
+    expect(c.dates).toEqual([
+      { date: '01-AUG-2026', timing: '14:00-15:40', status: 'On Duty' },
+      { date: '03-AUG-2026', timing: '08:00-08:50', status: 'On Duty' },
+      { date: '05-AUG-2026', timing: '09:00-09:50', status: 'Present' },
+      { date: '07-AUG-2026', timing: '10:00-10:50', status: 'Absent' },
+    ]);
   });
 
   it('handles 12-hour timings crossing noon without double-counting', () => {
@@ -672,6 +797,48 @@ describe('gateway OD parsers (processViewAttendanceDetail)', () => {
     </table></body></html>`;
     const c = parseAttendanceDetail(detailHtml);
     expect(c.odHours).toBe(3); // 160 min / 50 ≈ 3 periods
+  });
+
+  // The live Chennai page (per the UniCC client) is a `table.table` whose first
+  // row is a wrapper — the document's first `<tr>` is NOT the column header —
+  // and whose data rows carry ≥5 cells with the date at index 1 and the status
+  // at index 4. The old parser keyed off the document's first row and read ''
+  // for every date, so the UI fell back to "Date unavailable".
+  it('reads dates/statuses from the live shape (header row not first, 5 columns)', () => {
+    const detailHtml = `<html><body>
+      <table class="table">
+        <tr><td>Registration Date</td><td>01-JUL-2026</td></tr>
+        <tr><td>Slot</td><td>A1</td></tr>
+      </table>
+      <table class="table">
+        <tr><td>Sl.No</td><td>Date</td><td>Day And Timing</td><td>Slot</td><td>Status</td></tr>
+        <tr><td>1</td><td>01-AUG-2026</td><td>08:00-08:50</td><td>A1</td><td>Present</td></tr>
+        <tr><td>2</td><td>03-AUG-2026</td><td>08:00-08:50</td><td>A1</td><td>Absent</td></tr>
+        <tr><td>3</td><td>05-AUG-2026</td><td>14:00-15:40</td><td>A1</td><td>On Duty</td></tr>
+        <tr><td>Summary</td><td>-</td><td>-</td><td>-</td><td>Present</td></tr>
+      </table>
+    </body></html>`;
+    const c = parseAttendanceDetail(detailHtml);
+    // The 2-cell "Registration Date" row and the date-less summary row are not
+    // classes; the wrapper's 2-cell rows are skipped too.
+    expect(c).toMatchObject({ present: 1, absent: 1, onDuty: 1, total: 3, odHours: 2 });
+    expect(c.dates).toEqual([
+      { date: '01-AUG-2026', timing: '08:00-08:50', status: 'Present' },
+      { date: '03-AUG-2026', timing: '08:00-08:50', status: 'Absent' },
+      { date: '05-AUG-2026', timing: '14:00-15:40', status: 'On Duty' },
+    ]);
+  });
+
+  it('still reads a headerless table by content, never by column position', () => {
+    const detailHtml = `<html><body>
+      <table class="table">
+        <tr><td>1</td><td>01-AUG-2026</td><td>A1</td><td>08:00-08:50</td><td>Present</td></tr>
+        <tr><td>2</td><td>03-AUG-2026</td><td>A1</td><td>08:00-08:50</td><td>Absent</td></tr>
+      </table>
+    </body></html>`;
+    const c = parseAttendanceDetail(detailHtml);
+    expect(c).toMatchObject({ present: 1, absent: 1, total: 2 });
+    expect(c.dates[0]).toEqual({ date: '01-AUG-2026', timing: '08:00-08:50', status: 'Present' });
   });
 
   it('throws ParseError on a login page', () => {
@@ -709,6 +876,19 @@ describe('gateway academic-calendar parsers (3-step flow)', () => {
     expect(days[0]).toMatchObject({ date: '2026-08-01', instructional: true, dayOrder: 'Day Order 2', label: '' });
     expect(days[1]).toMatchObject({ date: '2026-08-15', instructional: false, dayOrder: null, label: 'Independence Day' });
     expect(days[2]).toMatchObject({ date: '2026-08-22', instructional: true, dayOrder: 'Day Order 7' });
+  });
+
+  it('drops a calendar cell whose day the month never had', () => {
+    const html = `<html><body><table class="calendar-table">
+      <tr><td><span>28</span><span>Instructional Day</span></td></tr>
+      <tr><td><span>30</span><span>Holiday</span><span>(Founders Day)</span></td></tr>
+    </table></body></html>`;
+    // A stray 30 in a February grid is not a day; the calendar must not hand the
+    // client "2026-02-30" for a clock to roll onto March.
+    expect(parseAcademicCalendar(html, '2026-02').map((d) => d.date)).toEqual(['2026-02-28']);
+    // And February 29th is real in a leap year — the guard is not "over 28".
+    const leap = html.replace('>28<', '>29<');
+    expect(parseAcademicCalendar(leap, '2028-02').map((d) => d.date)).toEqual(['2028-02-29']);
   });
 
   it('throws ParseError when the calendar page has no table (structure changed)', () => {
@@ -792,6 +972,20 @@ describe('gateway arrear parsers (2-step flow)', () => {
 
   it('returns [] for a no-data page (legitimate empty)', () => {
     expect(parseArrearHtml('<html><body><div class="no-data">No records found</div></body></html>', 'WS202324', 'x')).toEqual([]);
+  });
+
+  it('reads a NEGATED arrear status as still open', () => {
+    // VTOP writes "Not Cleared" for an arrear that is still live, and /clear/
+    // matches inside it — so a real backlog used to be published as cleared
+    // and vanished from the count a student sees.
+    const html = `<html><body><table>
+      <tr><th>Course Code</th><th>Course Title</th><th>Credits</th><th>Grade</th><th>Status</th></tr>
+      <tr><td>MAT2002</td><td>Discrete Mathematics</td><td>3</td><td></td><td>Not Cleared</td></tr>
+      <tr><td>CS3001</td><td>Operating Systems</td><td>4</td><td></td><td>NOT REGISTERED</td></tr>
+      <tr><td>CS3002</td><td>Networks</td><td>4</td><td></td><td>Re-registered</td></tr>
+    </table></body></html>`;
+    const rows = parseArrearHtml(html, 'WS202324', 'Winter Semester 2023-24');
+    expect(rows.map((r) => r.status)).toEqual(['Pending', 'Pending', 'Registered']);
   });
 });
 
@@ -898,6 +1092,19 @@ describe('gateway parser guards + date helper', () => {
     expect(normalizeDate('19/08/2026')).toBe('2026-08-19');
     expect(normalizeDate('2026-09-21')).toBe('2026-09-21');
     expect(normalizeDate('02-FEB-26')).toBe('2026-02-02');
+  });
+
+  it('will not send a client a day that never happened', () => {
+    // The gateway's text is what both clients render and count down from, so an
+    // invented ISO here becomes a wrong exam date everywhere. VTOP's own words
+    // come back untouched when the pieces do not name a real day.
+    expect(normalizeDate('08/18/2026')).toBe('08/18/2026');
+    expect(normalizeDate('31/02/2026')).toBe('31/02/2026');
+    expect(normalizeDate('31-FEB-2026')).toBe('31-FEB-2026');
+    expect(normalizeDate('29/02/2025')).toBe('29/02/2025'); // 2025 is not a leap year
+    // the ordinary and the merely unusual still normalise
+    expect(normalizeDate('29/02/2028')).toBe('2028-02-29');
+    expect(normalizeDate('30-JUN-26')).toBe('2026-06-30');
   });
 });
 
@@ -1034,7 +1241,7 @@ describe('gateway payment receipts parser (getReceiptsApplno)', () => {
         <tr>
           <td>RCPT-2026-0001</td><td>18-AUG-2026</td><td>1,25,000</td><td>CC</td>
           <td><button onclick="doDuplicateReceipt('ABC123')">View</button>
-              <input name="applno" value="APL-9"><input name="regno" value="25BEE1303"></td>
+              <input name="applno" value="APL-9"><input name="regno" value="25BEE0001"></td>
         </tr>
       </table>
     </body></html>`;
@@ -1047,7 +1254,7 @@ describe('gateway payment receipts parser (getReceiptsApplno)', () => {
       campusCode: 'CC',
       viewKey: 'ABC123',
       applno: 'APL-9',
-      regno: '25BEE1303',
+      regno: '25BEE0001',
     });
   });
 

@@ -289,12 +289,3 @@ export function syllabusRequestFor(
     ...(semesterLabel ? { semesterLabel } : {}),
   };
 }
-
-/** Human size for a fetched file ("1.4 MB" / "320 KB"). */
-export function formatSyllabusSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${Math.round(kb)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
-}

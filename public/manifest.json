@@ -8,7 +8,7 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "launch_handler": { "client_mode": "focus-existing" },
-  "background_color": "#080b12",
+  "background_color": "#0b1220",
   "theme_color": "#2563eb",
   "orientation": "any",
   "edge_side_panel": { "preferred_width": 420 },

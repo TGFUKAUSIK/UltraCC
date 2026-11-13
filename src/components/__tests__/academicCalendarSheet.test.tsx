@@ -195,12 +195,17 @@ describe('day sheet CSS contract (mobile reachability)', () => {
     expect(mobile![0]).toMatch(/max-height: 100%/);
   });
 
-  it('anchors the scrim to the visible viewport, not the layout one', () => {
-    // `inset: 0` alone sizes to the LAYOUT viewport, which on a phone is taller
-    // than what is visible while the browser toolbar is up — the tail of the
-    // sheet landed behind that toolbar and could not be panned into view.
-    expect(overlay).toMatch(/height: 100vh/);
-    expect(overlay).toMatch(/height: 100dvh/);
+  it('anchors the scrim to the same pinned box as the app shell', () => {
+    // `inset: 0` used to size to the LAYOUT viewport, taller on a phone than
+    // what is visible while the browser toolbar is up — the tail of the sheet
+    // landed behind that toolbar — so the scrim compensated with an explicit
+    // `height: 100vh/100dvh`. `#root` is pinned with `position: fixed;
+    // inset: 0` now and the shell is 100% of it, so the scrim is anchored to
+    // that same box by construction and the viewport unit is gone. Re-adding one
+    // is the regression the shell guard exists to catch.
+    expect(overlay).toMatch(/position: fixed/);
+    expect(overlay).toMatch(/inset: 0/);
+    expect(overlay, 'a viewport unit here re-opens the iOS band').not.toMatch(/height:\s*100(vh|dvh|svh)/);
   });
 
   it('does not depend on the generic fixed/inset-0 sheet skin', () => {

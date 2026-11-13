@@ -10,15 +10,15 @@ import {
 import { StudentProfile, AttendanceRecord, TimetableSlot, CourseMarksRecord, ExamRecord, AssignmentRecord, TransportInfo } from '../types';
 
 const profile: StudentProfile = {
-  registrationNo: '23BCE1082',
-  name: 'Kausik',
+  registrationNo: '23BCE0000',
+  name: 'Aarav',
   program: 'B.Tech',
   branch: 'Computer Science & Engineering',
   school: 'SCOPE',
   semester: 'Semester 4',
   cgpa: 8.92,
   proctorName: 'Dr. R. Ramanathan',
-  proctorEmail: 'ramanathan.r@vit.ac.in',
+  proctorEmail: 'faculty.name@vit.ac.in',
   proctorMobile: '+91 98765 43210',
 };
 
@@ -112,13 +112,13 @@ describe('adapters', () => {
   it('maps the VTOP profile into the UI profile view-model', () => {
     const ui = toUiProfile(profile);
     expect(ui).toMatchObject({
-      name: 'Kausik',
-      regNo: '23BCE1082',
+      name: 'Aarav',
+      regNo: '23BCE0000',
       semester: 4,
       cgpa: 8.92,
       proctorName: 'Dr. R. Ramanathan',
     });
-    expect(ui.proctorContact).toContain('ramanathan.r@vit.ac.in');
+    expect(ui.proctorContact).toContain('faculty.name@vit.ac.in');
   });
 
   it('carries the VTOP photo through to profilePhotoUrl (all avatar surfaces share it)', () => {
@@ -132,16 +132,19 @@ describe('adapters', () => {
     expect(ui.profilePhotoUrl).toBeUndefined();
   });
 
-  it('maps attendance with derived category and type, filling venue from the timetable', () => {
+  it('maps attendance to VTOP’s own course type, filling venue from the timetable', () => {
     const ui = toUiAttendance(attendanceRows, timetableSlots);
     expect(ui).toHaveLength(1);
     expect(ui[0]).toMatchObject({
       courseCode: 'CSE2001',
       type: 'ETH',
       percentage: 71.4,
-      category: 'Critical',
       venue: 'SJT 204',
     });
+    // The mapping carries no attendance verdict: a 71.4% row must not arrive
+    // pre-labelled Safe/Critical, because every surface measures the student's
+    // own bar and the slider can move after the sync.
+    expect(Object.keys(ui[0])).not.toContain('category');
   });
 
   it('uses the grade summary for CGPA + credits and marks absence as null (never 0)', () => {
@@ -222,6 +225,11 @@ describe('adapters', () => {
     const withTitle = toUiTimetable([{ ...timetableSlots[0], facultyName: 'Dr. Vasudevan - Associate Professor' }]);
     expect(withTitle[0].facultyName).toBe('Dr. Vasudevan');
 
+    // Live-cache shape: the school suffix was joined by a separator, so removing
+    // it leaves an orphan dash. It must not print as "BINU BEN JOSE D R -".
+    const orphan = toUiTimetable([{ ...timetableSlots[0], facultyName: 'BINU BEN JOSE D R - SELECT' }]);
+    expect(orphan[0].facultyName).toBe('BINU BEN JOSE D R');
+
     // Vendor names without ID/school tokens stay intact.
     const vendor = toUiAttendance([{ ...attendanceRows[0], facultyName: 'ETHNUS ETHNUS (APT) ACAD' }]);
     expect(vendor[0].facultyName).toBe('ETHNUS ETHNUS (APT) ACAD');
@@ -231,7 +239,7 @@ describe('adapters', () => {
     const ui = toUiTimetable(timetableSlots);
     expect(ui).toHaveLength(2);
     expect(ui[0]).toMatchObject({ day: 'Monday', startTime: '08:00', endTime: '08:50', building: 'SJT', roomNo: '204', isLab: false });
-    // "08:00 AM" style times are normalized to 24h for the next-action engine
+    // "08:00 AM" style times are normalized to the 24h VTOP rows are compared in
     expect(ui[1].startTime).toBe('08:00');
     expect(ui[1].isLab).toBe(true);
     expect(ui[1].building).toBe('Lab Block');
@@ -291,6 +299,20 @@ describe('adapters', () => {
     const withFat = [{ ...marks[0], fat: { title: 'FAT', maxMarks: 100, scored: 82, weightageMax: 50, weightageScored: 41, status: 'Evaluated' as const } }];
     const ui = toUiMarks(withFat);
     expect(ui[0].fat).toEqual({ scored: 82, max: 100, weightage: 50, status: 'Evaluated' });
+  });
+
+  it('keeps each FAT in the class VTOP served it in', () => {
+    // The gateway merges an embedded course's two tables into one record; the
+    // lab FAT still has to arrive marked 'L', or the grade model adds it to
+    // the theory half and one class's mark looks like the whole course's.
+    const embedded = [{
+      ...marks[0],
+      fat: { title: 'FAT', maxMarks: 100, scored: 62, weightageMax: 100, weightageScored: 62, status: 'Evaluated' as const, part: 'T' as const },
+      labFat: { title: 'Lab FAT', maxMarks: 50, scored: 40, weightageMax: 100, weightageScored: 80, status: 'Evaluated' as const, part: 'L' as const },
+    }];
+    const ui = toUiMarks(embedded);
+    expect(ui[0].fat).toMatchObject({ scored: 62, part: 'T' });
+    expect(ui[0].labFat).toMatchObject({ scored: 40, part: 'L' });
   });
 
   it('maps exams with priority and safe seat fallback', () => {
@@ -367,7 +389,7 @@ describe('profile school is the student\'s, not the proctor\'s', () => {
 
   it('takes the branch from the transport record when the profile row is the +2 group', () => {
     const transport = {
-      hasRegistration: true, registerNumber: '23BCE1082', name: 'Kausik',
+      hasRegistration: true, registerNumber: '23BCE0000', name: 'Aarav',
       branch: 'Electronics and Communication Engineering', programme: 'B.Tech',
     } as unknown as TransportInfo;
     const ui = toUiProfile({ ...profile, branch: '', school: 'Centre for e-Automation Technologies' }, null, transport);

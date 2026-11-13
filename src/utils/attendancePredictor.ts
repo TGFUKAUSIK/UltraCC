@@ -1,5 +1,5 @@
 import type { AttendanceRecord, TimetableSlot } from '../types';
-import { isLabSession } from './labSessions';
+import { combineLabSessions, isLabSession, periodsPerClass } from './labSessions';
 
 export type AttendancePredictionAction = 'present' | 'absent' | 'ignore';
 
@@ -78,7 +78,11 @@ export function projectAttendance(
   records: AttendanceRecord[],
   actions: Record<string, AttendancePredictionAction> = {},
 ): AttendanceProjection {
-  const predictions = classes.map((slot) => {
+  // VTOP's counts are 50-minute periods, so one marked lab adds two of them.
+  // Combining first also keeps a caller that still holds the raw L31 / L32
+  // pair from counting one lab session twice.
+  const sessions = combineLabSessions(classes);
+  const predictions = sessions.map((slot) => {
     const attendanceIndex = matchAttendanceRecord(slot, records);
     return {
       slot,
@@ -90,8 +94,13 @@ export function projectAttendance(
 
   const courses = records.map((record, index) => {
     const matched = predictions.filter((prediction) => prediction.attendanceIndex === index);
-    const present = matched.filter((prediction) => prediction.action === 'present').length;
-    const absent = matched.filter((prediction) => prediction.action === 'absent').length;
+    // A class costs its own number of periods: 1 for theory, 2 for a lab
+    // session. Adding one per class understated every lab in the projection.
+    const periods = (action: AttendancePredictionAction) => matched
+      .filter((prediction) => prediction.action === action)
+      .reduce((sum, prediction) => sum + periodsPerClass(prediction.slot), 0);
+    const present = periods('present');
+    const absent = periods('absent');
     const projectedAttended = record.attended + present;
     const projectedTotal = record.totalHeld + present + absent;
     return {

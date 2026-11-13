@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { AlertCircle, WifiOff } from 'lucide-react';
 import { fresherGuideTerms } from './data/fresherGuideData';
 import { MeridianHeader } from './components/MeridianHeader';
@@ -6,6 +7,8 @@ import { MeridianDashboard } from './components/MeridianDashboard';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer } from './components/ToastContainer';
 import { PwaStatusBar } from './components/PwaStatusBar';
+// TEMPORARY: `?debug=viewport` phone-measurement panel. Deleted with the file.
+import { ViewportDebugOverlay } from './components/ViewportDebugOverlay';
 import { SyncStatusPanel } from './components/SyncStatusPanel';
 import { Bed } from 'lucide-react';
 import { UltraCCLogo } from './components/UltraCCLogo';
@@ -13,7 +16,9 @@ import { FirstRunLanding } from './components/FirstRunLanding';
 import { vtopDb } from './lib/db/vtopDatabase';
 import { StudentProfile, AttendanceRecord, TimetableSlot, CourseMarksRecord, ExamRecord, AssignmentRecord, GradeSummary, GradeHistory, SemesterGrades, OdSummary, SemesterInfo, AcademicCalendar, ArrearRecord, CircularRecord, CurriculumProgress, MakeupExamRecord, RefatInfo, CompreInfo, PaymentsInfo, CredentialsInfo, TransportInfo, SapInfo, PaymentReceiptsInfo, BankInfo, BiometricInfo, ProctorMessage, LoginHistoryRow, ClassMessage, HodDeanInfo, WalletInfo, ExtraCurricularInfo } from './lib/vtop/types';
 import { toUiProfile, toUiAttendance, toUiTimetable, toUiMarks, toUiExams, toUiAssignments } from './lib/vtop/adapters';
+import { reconcileAttendanceWithDetail } from './lib/vtop/reconcileAttendance';
 import { hadLiveSessionThisTab, isLiveSessionActive, resetLiveClient } from './lib/vtop/liveSession';
+import { attemptAutoSignIn } from './lib/vtop/autoSignIn';
 import {
   getSyncCoordinatorState,
   subscribeSyncCoordinator,
@@ -25,8 +30,8 @@ import {
   type SyncCoordinatorState,
 } from './lib/vtop/syncCoordinator';
 import { humanErrorCopy } from './lib/errorCopy';
-import { applySavedAccent, applySavedTheme, clearSavedLmsCredentials, getSavedCredentials, getSavedLmsCredentials, getFeatureMode } from './lib/settings';
-import { type FeatureMode } from './lib/navVisibility';
+import { applySavedAccent, applySavedTheme, clearSavedLmsCredentials, getSavedCredentials, getSavedLmsCredentials, getFeatureMode, hasChosenTheme } from './lib/settings';
+import { resolveTabForMode, type FeatureMode } from './lib/navVisibility';
 import { LMS_NEEDS_CREDENTIALS, resetLmsClient, runFullLmsSync } from './lib/lms/lmsClient';
 import { evaluateQuizNotifications, startQuizNotificationWatcher } from './lib/lms/notifications';
 import { toastInfo, toastSuccess, toastSync } from './lib/toast';
@@ -72,7 +77,31 @@ const ExtensionSyncModal = lazy(() => import('./components/ExtensionSyncModal').
 const SettingsModal = lazy(() => import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal })));
 
 function RouteLoadingState() {
-  return <div className="ultracc-route-loading" role="status" aria-live="polite"><span className="ultracc-route-loading-mark" aria-hidden="true" /><span>Loading UltraCC</span></div>;
+  // A route that is still arriving shows the shape it is about to fill — head,
+  // four record cards, then the wide panel beside the narrow one — instead of a
+  // dot in the middle of an empty page. The blocks carry no text, so nothing here
+  // can be mistaken for a figure from the student's own record.
+  return (
+    <div className="ultracc-route-loading" role="status" aria-live="polite">
+      <div className="uc-skeleton-page" aria-hidden="true">
+        <div className="uc-skeleton-head">
+          <div className="uc-skeleton uc-skeleton-avatar" />
+          <div style={{ display: 'grid', gap: 8, flex: 1 }}>
+            <div className="uc-skeleton uc-skeleton-bar" style={{ width: '38%' }} />
+            <div className="uc-skeleton uc-skeleton-bar" style={{ width: '58%', height: 9 }} />
+          </div>
+        </div>
+        <div className="uc-skeleton-grid">
+          {Array.from({ length: 4 }, (_, index) => <div className="uc-skeleton uc-skeleton-card" key={index} />)}
+        </div>
+        <div className="uc-skeleton-panels">
+          <div className="uc-skeleton uc-skeleton-panel" />
+          <div className="uc-skeleton uc-skeleton-panel" />
+        </div>
+      </div>
+      <span className="ultracc-route-loading-label">Loading UltraCC</span>
+    </div>
+  );
 }
 
 function RouteUnavailableState({ route, onLogin }: { route: string; onLogin: () => void }) {
@@ -118,20 +147,38 @@ const VTOP_DATA_TABS = new Set([
 /** Of those, the screens that read the cached profile record itself. */
 const PROFILE_TABS = new Set(['my-info', 'ai-advisor', 'placement', 'faculty']);
 
-/** Initial tab from the URL (?tab= from PWA shortcuts), else the last visited
- *  tab (session persistence), else the dashboard. */
-function initialTab(): string {
+/**
+ * Tabs whose page has more than one screen, so their `?subtab=` has to survive
+ * while the student is on them. Anywhere else it is cleared, because carrying a
+ * chip across a tab change would open the next visit on a screen nobody asked
+ * for — and the views that do use one read it when they mount. The list is
+ * here rather than in each view because the tab change owns that cleanup.
+ */
+const SUBTAB_TABS = new Set(['academics', 'grades', 'hostel']);
+
+/**
+ * Initial tab from the URL (?tab= from PWA shortcuts), else the last visited
+ * tab (session persistence), else the dashboard — then resolved through the
+ * feature mode, so a minimal-mode cold start never opens on a screen its own
+ * navigation does not offer.
+ *
+ * Reading the mode from settings rather than component state is deliberate:
+ * this runs before the first render, and a mode that only applied to the
+ * *second* screen would flash whatever tab was left in the URL.
+ */
+function initialTab(mode: FeatureMode): string {
+  let tab = 'dashboard';
   try {
     const fromUrl = new URLSearchParams(window.location.search).get('tab');
-    if (fromUrl && VALID_TABS.has(fromUrl)) return fromUrl;
+    if (fromUrl && VALID_TABS.has(fromUrl)) return resolveTabForMode(fromUrl, mode);
     const saved = sessionStorage.getItem('ultracc:activeTab');
-    if (saved && VALID_TABS.has(saved)) return saved;
+    if (saved && VALID_TABS.has(saved)) tab = saved;
   } catch { /* storage unavailable */ }
-  return 'dashboard';
+  return resolveTabForMode(tab, mode);
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>(initialTab);
+  const [activeTab, setActiveTab] = useState<string>(() => initialTab(getFeatureMode()));
   const [isCommandCenterOpen, setIsCommandCenterOpen] = useState<boolean>(false);
   const [isLoginOpen, setIsLoginOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -179,8 +226,6 @@ export default function App() {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const [hostelTab, setHostelTab] = useState<'mess' | 'leave' | 'laundry' | 'counselling'>('mess');
-
   const [lmsCourses, setLmsCourses] = useState<LmsCourse[]>([]);
   const [lmsAssignments, setLmsAssignments] = useState<LmsAssignment[]>([]);
   const [lmsQuizzes, setLmsQuizzes] = useState<LmsQuizWindow[]>([]);
@@ -195,6 +240,14 @@ export default function App() {
   const [lmsNeedsAttention, setLmsNeedsAttention] = useState(false);
   const lmsSyncInFlight = useRef(false);
   const refreshInFlight = useRef(false);
+  /**
+   * "regNo\0password" of the last saved pair a silent refresh sign-in was
+   * refused for. Once VTOP has refused a pair, a refresh must not silently spend
+   * another real login attempt on the same wrong password — the portal locks
+   * accounts after repeated failures — so the sheet opens for correction instead
+   * until the saved pair changes.
+   */
+  const refusedSilentPair = useRef('');
   const mainRef = useRef<HTMLElement | null>(null);
   // Course Hub drill-down: { code, title } when open.
   const [hubCourse, setHubCourse] = useState<{ code: string; title: string } | null>(null);
@@ -209,6 +262,13 @@ export default function App() {
   useEffect(() => {
     applySavedAccent();
     applySavedTheme();
+    // A phone that drops into dark mode at sunset should take the app with it —
+    // but only for a student who never chose a theme, since following the OS
+    // would otherwise overrule a deliberate Light.
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const followSystem = () => { if (!hasChosenTheme()) applySavedTheme(); };
+    media.addEventListener('change', followSystem);
+    return () => media.removeEventListener('change', followSystem);
   }, []);
 
   /** Every tab change: persist for PWA relaunch, keep the shareable ?tab= deep
@@ -217,28 +277,118 @@ export default function App() {
     try { sessionStorage.setItem('ultracc:activeTab', activeTab); } catch { /* ignore */ }
     try {
       const url = new URL(window.location.href);
-      if (url.searchParams.get('tab') !== activeTab) {
-        url.searchParams.set('tab', activeTab);
-        // replaceState, not pushState: refresh and share land on the current
-        // view, while Back keeps walking the app's real history.
-        window.history.replaceState({}, '', url.toString());
-      }
+      // A subtab names one screen inside one tab. Carrying it across a tab
+      // change would open the next visit on a chip nobody asked for.
+      if (!SUBTAB_TABS.has(activeTab)) url.searchParams.delete('subtab');
+      url.searchParams.set('tab', activeTab);
+      // replaceState, not pushState: refresh and share land on the current
+      // view, while Back keeps walking the app's real history.
+      if (url.toString() !== window.location.href) window.history.replaceState({}, '', url.toString());
     } catch { /* storage-less web views */ }
     mainRef.current?.scrollTo?.({ top: 0 });
     window.scrollTo?.({ top: 0 });
   }, [activeTab]);
+
+  /**
+   * Route changes go through a view transition.
+   *
+   * `document.startViewTransition` snapshots the outgoing screen and animates it
+   * into the incoming one, so moving between tabs reads as a change of place
+   * rather than a repaint. The callback has to mutate the DOM synchronously —
+   * React batches, so the snapshot would otherwise capture the old screen twice —
+   * which is what flushSync is for. Without the API, or for a student who asked
+   * for reduced motion, the update is applied plainly and the route frame's own
+   * fade (from the feel layer) carries the change.
+   *
+   * Only the route frame is named in the transition, so the rail, the app bar and
+   * the tab bar hold still while content arrives.
+   */
+  const swapTab = useCallback((apply: () => void) => {
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+    const reducedMotion = (() => {
+      try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+    })();
+    if (!doc.startViewTransition || reducedMotion) { apply(); return; }
+    try { doc.startViewTransition(() => flushSync(apply)); } catch { apply(); }
+  }, []);
+
+  const goToTab = useCallback((tab: string) => {
+    if (!VALID_TABS.has(tab)) return;
+    swapTab(() => setActiveTab((current) => (current === tab ? current : tab)));
+  }, [swapTab]);
+
+  /**
+   * Go to a tab, optionally asking it for one screen inside it. The dashboard's
+   * "OD hours used" figure lives under Academics → OD, so sending a student to
+   * plain Academics — or to their profile, which is what the button used to do —
+   * leaves them standing at the number with nothing to open. The subtab travels
+   * in the URL, so a refresh or a link pasted into chat lands in the same place.
+   */
+  const navigateToTab = useCallback((tab: string, subtab?: string) => {
+    if (!VALID_TABS.has(tab)) return;
+    try {
+      const url = new URL(window.location.href);
+      if (subtab) url.searchParams.set('subtab', subtab);
+      else url.searchParams.delete('subtab');
+      window.history.replaceState({}, '', url.toString());
+    } catch { /* web views with no URL to offer */ }
+    swapTab(() => setActiveTab(tab));
+  }, [swapTab]);
+
+  /**
+   * Open one course's class-by-class record from the Timetable. A class on the
+   * board is the shortest path to its own attendance, so this lands straight on
+   * the Academics drill-down for that code — the same screen the weekly list
+   * opens. The code travels in the URL, so a refresh or a shared link reopens
+   * the same course; the subtab is cleared because the drill-down is not one of
+   * the three chips and carrying a stale one would fight the URL sync.
+   */
+  const openCourseAttendance = useCallback((courseCode: string) => {
+    const code = (courseCode || '').trim();
+    if (!code) return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('course', code);
+      url.searchParams.delete('subtab');
+      window.history.replaceState({}, '', url.toString());
+    } catch { /* web views with no URL to offer */ }
+    swapTab(() => setActiveTab('academics'));
+  }, [swapTab]);
 
   /** Browser Back/Forward between ?tab= URLs (PWA shortcuts, shared links). */
   useEffect(() => {
     const onPopState = () => {
       try {
         const tab = new URLSearchParams(window.location.search).get('tab');
-        if (tab && VALID_TABS.has(tab)) setActiveTab(tab);
+        if (tab && VALID_TABS.has(tab)) goToTab(tab);
       } catch { /* ignore */ }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, []);
+  }, [goToTab]);
+
+  /**
+   * Minimal mode offers five destinations, and this is what makes that true of
+   * the URL and not just of the navigation.
+   *
+   * Three ways a minimal student could otherwise stand on a screen their own
+   * rail no longer lists: a `?tab=qbank` link pasted into chat, a PWA shortcut
+   * to a long-removed feature, or simply flipping the switch while sitting on
+   * the Timetable. All three converge here, and all three end on the Dashboard —
+   * the screen both modes open on, so a mode flip leaves a student on the tab
+   * they were already reading whenever that tab survived, and on home when it
+   * did not.
+   *
+   * The guard is `featureMode === 'minimal'` rather than the mode-aware helper
+   * alone, because complete mode deliberately still lets a deep link reach a
+   * *withdrawn* page like 'syllabus' — `resolveTabForMode` returns that tab
+   * untouched, but the effect must not fire at all in complete mode.
+   */
+  useEffect(() => {
+    if (featureMode !== 'minimal') return;
+    const resolved = resolveTabForMode(activeTab, featureMode);
+    if (resolved !== activeTab) goToTab(resolved);
+  }, [activeTab, featureMode, goToTab]);
 
   const loadLocalVtopData = useCallback(async () => {
     const cached = await vtopDb.getAllData();
@@ -255,7 +405,10 @@ export default function App() {
       // `cached.transport` only supplies the programme/branch VTOP states on
       // its own registration record; the profile page leaves them blank.
       if (cached.profile) setStudent(toUiProfile(cached.profile, cached.grades, cached.transport));
-      if (cached.attendance.length) setAttendance(toUiAttendance(cached.attendance, cached.timetable));
+      // The headline and the class-by-class list are the same screen, so they
+      // read one figure: the summary rows are brought up to the per-class detail
+      // VTOP served for the same sync (see reconcileAttendance).
+      if (cached.attendance.length) setAttendance(toUiAttendance(reconcileAttendanceWithDetail(cached.attendance, cached.od), cached.timetable));
       if (cached.timetable.length) setTimetable(toUiTimetable(cached.timetable));
       if (cached.marks.length) setMarks(toUiMarks(cached.marks));
       if (cached.exams.length) setExams(toUiExams(cached.exams));
@@ -350,7 +503,7 @@ export default function App() {
       setLmsSyncMessage(result.message);
       setLmsNeedsAttention(!result.ok);
       if (result.ok) {
-        toastSync('lms-sync', 'LMS data refreshed ✓', { complete: true });
+        toastSync('lms-sync', 'LMS data refreshed', { complete: true });
       } else {
         toastSync('lms-sync', 'LMS refresh needs attention', {
           error: true,
@@ -370,6 +523,91 @@ export default function App() {
     }
   }, [loadLocalLmsData]);
 
+  /**
+   * Make sure this tab has a usable VTOP session before any act that needs one,
+   * reusing the login saved in Settings instead of asking for it again.
+   *
+   * A VTOP session token lives only in memory, so a reload (or a PWA update)
+   * ends the session while the credentials saved in Settings survive. When they
+   * are there this signs in silently with them — the same sequence the login
+   * sheet runs — and only a genuine VTOP rejection sends the form. This is what
+   * makes a refresh *and* a term switch behave the same on phone and desktop: a
+   * student who saved their VTOP login is connected, never re-questioned.
+   *
+   * Returns:
+   *   'live'        — a session exists (or was just created); the caller may go
+   *                   on to its VTOP work.
+   *   'asked'       — nothing was saved, VTOP refused the saved pair, or VTOP
+   *                   wants the CAPTCHA typed; the sheet is open and the student
+   *                   has been told, so the caller must stop.
+   *   'unavailable' — VTOP could not be reached at all. The saved login is fine,
+   *                   so the sheet stays shut; the caller stops and reports it.
+   */
+  const ensureVtopSession = useCallback(async (): Promise<'live' | 'asked' | 'unavailable'> => {
+    if (isLiveSessionActive()) return 'live';
+
+    const savedVtop = getSavedCredentials();
+    if (!savedVtop.regNo || !savedVtop.password) {
+      setIsLoginOpen(true);
+      /*
+       * No saved VTOP login, so this act really must ask the student to sign in
+       * — but a plain reload and an expired session are the same answer to
+       * `isLiveSessionActive()` (the token is memory-only), and only one of them
+       * is "expired". `hadLiveSessionThisTab()` is the only way to tell them
+       * apart, so an ordinary reload never tells the student their session
+       * expired (brief §5).
+       */
+      const everSignedInHere = hadLiveSessionThisTab();
+      toastInfo(
+        everSignedInHere
+          ? 'VTOP session expired — sign in to refresh.'
+          : 'This tab is not signed in to VTOP — sign in to refresh.',
+        { duration: 5000 },
+      );
+      return 'asked';
+    }
+
+    const pair = `${savedVtop.regNo}\u0000${savedVtop.password}`;
+    // This exact pair was already refused once this session. Do not spend
+    // another real login on it — ask the student to correct it instead.
+    if (refusedSilentPair.current === pair) {
+      setIsLoginOpen(true);
+      toastSync('vtop-sync', 'Your saved VTOP login was refused — check it and sign in', {
+        error: true,
+        detail: 'VTOP did not accept the registration number and password saved in Settings.',
+      });
+      return 'asked';
+    }
+
+    toastSync('vtop-sync', 'Signing in to VTOP…');
+    const signIn = await attemptAutoSignIn({ regNo: savedVtop.regNo, password: savedVtop.password });
+    if (signIn.status === 'ok') {
+      refusedSilentPair.current = '';
+      return 'live';
+    }
+    const rejected = signIn.handover === 'rejected';
+    if (rejected) refusedSilentPair.current = pair;
+    // VTOP itself (or the network) is not answering. The saved login was never
+    // the problem, so retyping it would be busywork — report it and leave the
+    // sheet shut. Only a refusal, or a CAPTCHA that has to be typed by a person,
+    // is worth the student's attention.
+    if (signIn.handover === 'unavailable') {
+      toastSync('vtop-sync', 'Could not reach VTOP — try again in a moment', {
+        error: true,
+        detail: signIn.message || 'VTOP did not answer the sign-in request.',
+      });
+      return 'unavailable';
+    }
+    setIsLoginOpen(true);
+    toastSync('vtop-sync', rejected ? 'VTOP refused your saved login — sign in again' : 'Finish signing in to VTOP to refresh', {
+      error: true,
+      detail: rejected
+        ? 'VTOP did not accept the registration number and password saved in Settings. Correct them to refresh.'
+        : 'Your saved login is fine, but VTOP needs the CAPTCHA typed before it will let this refresh continue.',
+    });
+    return 'asked';
+  }, []);
+
   /** Refresh all configured sources while keeping the current cached UI mounted. */
   const handleRefresh = useCallback(async (): Promise<boolean> => {
     if (refreshInFlight.current) return false;
@@ -378,33 +616,13 @@ export default function App() {
       return false;
     }
 
-    // VTOP session tokens intentionally live only in memory. Saved settings
-    // credentials can prefill the login modal, but they are not a session by
-    // themselves and must not be silently replayed without the CAPTCHA flow.
-    if (!isLiveSessionActive()) {
-      const savedVtop = getSavedCredentials();
-      setIsLoginOpen(true);
-      /*
-       * Two different facts, and the old copy claimed the wrong one after every
-       * ordinary reload: "your session expired" describes a session VTOP ended,
-       * while a reload simply means this tab never signed in (brief §5 — a
-       * normal reload must not report an expired session). `hadLiveSessionThisTab`
-       * is the only way to tell them apart, and it is memory-only like the token.
-       */
-      const everSignedInHere = hadLiveSessionThisTab();
-      toastInfo(
-        savedVtop.regNo && savedVtop.password
-          ? everSignedInHere
-            ? 'VTOP session expired — your saved credentials are ready. Sign in to refresh.'
-            : 'This tab is not signed in to VTOP — your saved credentials are ready. Sign in to refresh.'
-          : 'Sign in to VTOP to refresh your academic data.',
-        { duration: 5000 },
-      );
-      return false;
-    }
-
     refreshInFlight.current = true;
     try {
+      // Confirm a live VTOP session first, silently reusing the login saved in
+      // Settings rather than asking for it again — see `ensureVtopSession`.
+      const gate = await ensureVtopSession();
+      if (gate !== 'live') return false;
+
       await refreshVtopData({
         reason: 'manual',
         force: true,
@@ -433,13 +651,34 @@ export default function App() {
     } finally {
       refreshInFlight.current = false;
     }
-  }, [handleLmsSync, isOnline, loadLocalVtopData]);
+  }, [ensureVtopSession, handleLmsSync, isOnline, loadLocalVtopData]);
+
+  /**
+   * Every "sign in to VTOP" affordance funnels through here: the header's Sign
+   * in button, the signed-out welcome card, the per-route connect prompts and
+   * the first-run step. When the student has saved credentials it is the same
+   * silent sign-in the refresh already does, so the desktop Sign in button no
+   * longer re-asks for a login the phone never asks for — on any width, a
+   * student who saved their VTOP login is connected, not questioned.
+   *
+   * The credential sheet opens only when there is nothing saved to reuse; a
+   * refusal or the need for a typed CAPTCHA is reported by `handleRefresh`,
+   * which opens the sheet itself for exactly those two cases.
+   */
+  const requestSignIn = useCallback(() => {
+    const saved = getSavedCredentials();
+    if (!saved.regNo || !saved.password) {
+      setIsLoginOpen(true);
+      return;
+    }
+    void handleRefresh();
+  }, [handleRefresh]);
 
   // NO scroll-gesture refresh on mobile, by decision (production bug: a fast
   // downward flick at the top of a page travelled past the pull threshold and
-  // ran handleRefresh, which opens the login modal when this tab has no live
-  // VTOP session — so ordinary scrolling looked like "the app refreshed itself
-  // and signed me out"). Refreshing is an explicit act: the header's
+  // ran handleRefresh, which then demanded a sign-in whenever this tab had no
+  // live VTOP session — so ordinary scrolling looked like "the app refreshed
+  // itself and signed me out"). Refreshing is an explicit act: the header's
   // "Sync and refresh" button and the per-view refresh buttons call
   // handleRefresh. Native overscroll refresh is pinned off in index.css
   // (`overscroll-behavior-y: none` on html/body). See
@@ -590,7 +829,7 @@ export default function App() {
 
   const handleNavigateMap = (buildingQuery: string) => {
     setCampusSearchQuery(buildingQuery);
-    setActiveTab('campus');
+    goToTab('campus');
   };
 
   /**
@@ -606,7 +845,7 @@ export default function App() {
       window.history.replaceState({}, '', url.toString());
     } catch { /* storage-less web views: the tab still opens */ }
     setHubCourse(null);
-    setActiveTab('syllabus');
+    goToTab('syllabus');
   };
 
   /** Global shortcuts: Ctrl/⌘+K toggles the command palette; Escape closes it. */
@@ -625,8 +864,10 @@ export default function App() {
 
   /**
    * Semester switcher (dashboard + settings): re-syncs every semester-dependent
-   * dataset with the live in-memory session. Without a live session it opens
-   * the login modal instead.
+   * dataset, reusing the login saved in Settings the same way a refresh does.
+   * Only when there is nothing saved to reuse — or VTOP refuses it / wants the
+   * CAPTCHA typed — does the login sheet open, so choosing a different term is
+   * never a reason to re-enter credentials the student already saved.
    *
    * Runs through the sync coordinator so the shared in-flight lock, the global
    * "Refreshing VTOP…" status and the last-sync timestamp stay accurate, and
@@ -637,13 +878,19 @@ export default function App() {
   const handleSemesterChange = async (semId: string) => {
     if (!semId || semId === selectedSemesterId || semesterSwitchInFlight.current) return;
     setSemesterSyncError(null);
-    if (!isLiveSessionActive()) {
-      setIsLoginOpen(true);
-      return;
-    }
     semesterSwitchInFlight.current = true;
     setSemesterSwitching(true);
     try {
+      // A saved VTOP login is reused here exactly as a refresh reuses it. The
+      // sheet opens only when there is nothing saved, or VTOP refused the saved
+      // pair / needs the CAPTCHA typed — both reported by `ensureVtopSession`.
+      const gate = await ensureVtopSession();
+      if (gate !== 'live') {
+        if (gate === 'unavailable') {
+          setSemesterSyncError('Could not switch semester — VTOP did not respond. Still showing your previous semester.');
+        }
+        return;
+      }
       const ok = await refreshVtopData({
         reason: 'semester',
         force: true,
@@ -664,15 +911,15 @@ export default function App() {
   };
 
   return (
-    <div className="ultracc-app min-h-screen bg-white text-zinc-900 font-sans selection:bg-blue-600 selection:text-zinc-900 flex flex-col antialiased">
+    <div className="ultracc-app bg-white text-zinc-900 font-sans selection:bg-blue-600 selection:text-white flex flex-col antialiased">
       <a href="#ultracc-main" className="ultracc-skip-link">Skip to content</a>
       {!isFirstRun && (
       <MeridianHeader
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={goToTab}
         mode={featureMode}
         onOpenCommandCenter={() => setIsCommandCenterOpen(true)}
-        onOpenLogin={() => setIsLoginOpen(true)}
+        onOpenLogin={requestSignIn}
         onOpenSettings={() => setIsSettingsOpen(true)}
         syncState={syncState}
         isOnline={isOnline}
@@ -692,7 +939,6 @@ export default function App() {
           exams: exams as any,
           marks: marks as any,
           timetable: timetable as any,
-          campusEvents: [],
         }}
       />
       )}
@@ -701,7 +947,7 @@ export default function App() {
         <ErrorBoundary>
         {isFirstRun ? (
           <FirstRunLanding
-            onLogin={() => setIsLoginOpen(true)}
+            onLogin={requestSignIn}
             semesters={semesters}
             selectedSemesterId={selectedSemesterId}
             onSemesterChange={handleSemesterChange}
@@ -746,14 +992,14 @@ export default function App() {
             <div className="ultracc-empty-intro">
               <div className="ultracc-empty-icon"><UltraCCLogo size={48} /></div>
               <div><p className="ultracc-eyebrow">VIT Chennai · Student Portal</p><h2>Welcome to UltraCC</h2><p>Connect VTOP to load your timetable, attendance, marks, examinations and academic records.</p></div>
-              <button onClick={() => setIsLoginOpen(true)} className="acc-bg text-zinc-900 font-extrabold">Login with VTOP <span>→</span></button>
+              <button onClick={requestSignIn} className="acc-bg text-zinc-900 font-extrabold">Login with VTOP <span>→</span></button>
               <small>Credentials stay on this device unless you log in.</small>
             </div>
             <div className="ultracc-access-grid">
-              <button onClick={() => setIsLoginOpen(true)}><b>VTOP sync</b><span>Load authoritative academic data</span><i>Connect →</i></button>
-              <button onClick={() => setActiveTab('lms')}><b>LMS / assignments</b><span>Open Moodle coursework when available</span><i>Open →</i></button>
-              <button onClick={() => setActiveTab('campus-utils')}><b>Campus facilities</b><span>Verified spaces, printing and study groups</span><i>Explore →</i></button>
-              <button onClick={() => setActiveTab('tools')}><b>Student tools</b><span>Calculators, exports and academic utilities</span><i>Explore →</i></button>
+              <button onClick={requestSignIn}><b>VTOP sync</b><span>Load authoritative academic data</span><i>Connect →</i></button>
+              <button onClick={() => goToTab('lms')}><b>LMS / assignments</b><span>Open Moodle coursework when available</span><i>Open →</i></button>
+              <button onClick={() => goToTab('campus-utils')}><b>Campus facilities</b><span>Verified spaces, printing and study groups</span><i>Explore →</i></button>
+              <button onClick={() => goToTab('tools')}><b>Student tools</b><span>Calculators, exports and academic utilities</span><i>Explore →</i></button>
             </div>
           </section>
         )}
@@ -763,7 +1009,7 @@ export default function App() {
         {isLoaded
           && VTOP_DATA_TABS.has(activeTab)
           && (!hasSyncedData || (PROFILE_TABS.has(activeTab) && !student)) && (
-          <RouteUnavailableState route={activeTab} onLogin={() => setIsLoginOpen(true)} />
+          <RouteUnavailableState route={activeTab} onLogin={requestSignIn} />
         )}
         {hasSyncedData && student && activeTab === 'dashboard' && (
           <MeridianDashboard
@@ -774,13 +1020,15 @@ export default function App() {
             assignments={assignments as any}
             marks={marks as any}
             circulars={circulars as any}
+            quizzes={lmsQuizzes as any}
             od={od as any}
             semesterLabel={activeSemesterLabel}
             profilePhotoUrl={(student as any)?.profilePhotoUrl}
             semesters={semesters}
             selectedSemesterId={selectedSemesterId}
             onSemesterChange={handleSemesterChange}
-            onNavigateTab={setActiveTab}
+            onNavigateTab={navigateToTab}
+            mode={featureMode}
           />
         )}
 
@@ -793,6 +1041,7 @@ export default function App() {
             lmsData={lmsDataForCourse(hubCourse.code)}
             onBack={() => setHubCourse(null)}
             onOpenSyllabus={handleOpenCourseSyllabus}
+            regNo={student?.regNo}
           />
         )}
 
@@ -830,24 +1079,31 @@ export default function App() {
               courseName: lmsCourses.find((c) => c.courseId === g.courseId)?.name || `Course ${g.courseId}`,
               items: g.items,
             }))}
+            regNo={student?.regNo}
+            semesterId={selectedSemesterId}
           />
         )}
 
         {hasSyncedData && activeTab === 'academics' && (
           <div className="space-y-6">
             <AcademicsView attendance={attendance as any} timetable={timetable as any} od={od} />
-            <CourseIntelView attendance={attendance as any} marks={marks as any} />
+            {/* Course intelligence is a second analysis of the same attendance.
+                It is a section of this screen rather than a destination, and
+                minimal mode's promise is the daily essentials — so the analysis
+                stays out of the mode that does not offer the screen it dives
+                into. */}
+            {featureMode === 'complete' && <CourseIntelView attendance={attendance as any} marks={marks as any} regNo={student?.regNo} />}
           </div>
         )}
 
         {hasSyncedData && activeTab === 'timetable' && (
-          <TimetableView timetable={timetable as any} attendance={attendance as any} onNavigateMap={handleNavigateMap} />
+          <TimetableView timetable={timetable as any} attendance={attendance as any} onNavigateMap={handleNavigateMap} onOpenCourse={openCourseAttendance} />
         )}
 
         {hasSyncedData && activeTab === 'syllabus' && (
           <SyllabusView
             timetable={timetable as any}
-            onLogin={() => setIsLoginOpen(true)}
+            onLogin={requestSignIn}
             semesterId={selectedSemesterId}
             semesterLabel={activeSemesterLabel}
             registrationNo={student?.regNo || ''}
@@ -878,11 +1134,11 @@ export default function App() {
         )}
 
         {activeTab === 'campus-utils' && (
-          <CampusUtilitiesView onOpenRooms={() => setActiveTab('freeClassrooms')} onOpenMap={(query) => { setCampusSearchQuery(query || ''); setActiveTab('campus'); }} />
+          <CampusUtilitiesView onOpenRooms={() => goToTab('freeClassrooms')} onOpenMap={(query) => { setCampusSearchQuery(query || ''); goToTab('campus'); }} />
         )}
 
         {activeTab === 'fresher' && (
-          <FresherGuideView terms={fresherGuideTerms} onNavigateTab={setActiveTab} />
+          <FresherGuideView terms={fresherGuideTerms} onNavigateTab={goToTab} />
         )}
 
         {hasSyncedData && student && activeTab === 'placement' && (
@@ -942,21 +1198,18 @@ export default function App() {
 
         {activeTab === 'hostel' && (
           <div className="space-y-4 pb-12">
-            <div className="bg-white border border-zinc-200 rounded-3xl p-5 shadow-xl">
+            <div className="uc-plate p-5">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-600">
+                <div className="p-2.5 rounded-2xl acc-soft acc-border acc-text">
                   <Bed className="h-6 w-6" />
                 </div>
                 <div>
                   <h2 className="text-lg font-extrabold text-zinc-900 tracking-tight">Hostel & Campus Life</h2>
-                  <p className="text-xs text-zinc-500 font-medium">Mess menu, leave tracker, laundry, and counselling</p>
+                  <p className="text-xs text-zinc-500 font-medium">Leave tracker, laundry record, and the numbers to call</p>
                 </div>
               </div>
             </div>
-            <HostelSubTabs
-              activeTab={hostelTab}
-              onTabChange={(t) => setHostelTab(t)}
-            />
+            <HostelSubTabs />
           </div>
         )}
 
@@ -967,14 +1220,13 @@ export default function App() {
         )}
 
         {activeTab === 'tools' && (
-          <ToolsHub onNavigate={setActiveTab} />
+          <ToolsHub onNavigate={goToTab} />
         )}
 
         {activeTab === 'clubs' && <ClubHub />}
         </Suspense>
         </div>
 
-        {/* Hostel sub-tab state */}
         </>
         )}
         </ErrorBoundary>
@@ -992,7 +1244,7 @@ export default function App() {
         exams={exams as any}
         marks={marks as any}
         timetable={timetable as any}
-        onNavigateTab={setActiveTab}
+        onNavigateTab={goToTab}
         mode={featureMode}
       />
 
@@ -1029,6 +1281,10 @@ export default function App() {
       />
       </Suspense>
       </ErrorBoundary>
+
+      {/* TEMPORARY: the phone viewport measurement panel, opt-in via
+          `?debug=viewport`. Renders nothing without it. */}
+      <ViewportDebugOverlay />
 
       {/* Toast notifications */}
       <ToastContainer />

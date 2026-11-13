@@ -133,6 +133,23 @@ function clearRowStore(tx: IDBTransaction, storeName: string): void {
   tx.objectStore(storeName).clear();
 }
 
+/**
+ * Pick the cached row for the semester actually selected in the UI.
+ *
+ * Some datasets are written under the semester id rather than 'current'
+ * (semesterGrades is the grade card for one specific term). Reading them by
+ * position returned whichever term was synced first, because IndexedDB walks
+ * keys in ascending order — so a student who switched terms kept seeing the
+ * previous term's SGPA under the new term's heading, indefinitely. When the
+ * selected term has no row, the honest answer is "not synced for this term".
+ */
+function pickTermRow<T extends { id: string }>(rows: T[], selectedSemesterId?: string): T | null {
+  if (!rows.length) return null;
+  const wanted = (selectedSemesterId || '').trim();
+  if (!wanted) return rows[0];
+  return rows.find((row) => row.id === wanted) ?? null;
+}
+
 class VtopLocalDatabase {
   private dbPromise: Promise<IDBDatabase>;
 
@@ -307,7 +324,15 @@ class VtopLocalDatabase {
     data: Partial<VtopCachedData>,
     source: 'LIVE_VTOP' | 'CACHED_INDEXEDDB' | 'DEMO_MODE',
     selectedSemesterId?: string,
-    registrationNo?: string
+    registrationNo?: string,
+    /**
+     * `syncedAt` is the moment data actually arrived. A sync in which every
+     * dataset failed must not stamp this device as freshly synced — that
+     * timestamp is what the "Synced …" label, the staleness check and the
+     * auto-refresh cooldown all read, so stamping it turned an outage into six
+     * hours of confidently displayed stale data.
+     */
+    opts?: { syncedAt?: number },
   ): Promise<void> {
     try {
       const db = await this.dbPromise;
@@ -383,7 +408,7 @@ class VtopLocalDatabase {
       if (data.extraCurricular) putRow(tx, 'extraCurricular', { id: 'current', ...data.extraCurricular });
 
       const meta: VtopSyncMetadata = {
-        lastSyncedAt: Date.now(),
+        lastSyncedAt: opts?.syncedAt ?? Date.now(),
         syncSource: source,
         isOnline: navigator.onLine,
         selectedSemesterId: selectedSemesterId || '',
@@ -495,7 +520,10 @@ class VtopLocalDatabase {
         semesters,
         grades: gradesRows[0] || null,
         gradeHistory: gradeHistoryRows[0] || null,
-        semesterGrades: semesterGradesRows[0] || null,
+        // Term-keyed on write, so it must be term-selected on read. Taking the
+        // first row handed back whichever semester was synced first, which put
+        // last term's grade card under this term's heading and never changed.
+        semesterGrades: pickTermRow(semesterGradesRows, meta.selectedSemesterId),
         od: odRows[0] || null,
         calendar: calendarRows[0] || null,
         arrears: arrearsRows.map(({ id: _id, ...rest }) => rest),

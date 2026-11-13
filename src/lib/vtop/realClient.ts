@@ -63,6 +63,7 @@ import { NOT_AUTHENTICATED_MESSAGE, VtopError } from './errors';
 import { debugErrorDetail } from '../errorCopy';
 import { syllabusFailureInfo, syllabusFailureLine, type SyllabusFailureStage } from '../syllabusDiagnostics';
 import { combineLabSessions } from '../../utils/labSessions';
+import { classifyAssignmentStatus } from '../../utils/assessmentStatus';
 
 // ---------------------------------------------------------------------------
 // Gateway configuration
@@ -96,12 +97,12 @@ function envOr(key: string, fallback: string): string {
 /** VITE_VTOP_GATEWAY_URL must be set to your deployed Supabase function URL. */
 function gatewayUrl(): string {
   // Vite exposes env vars prefixed with VITE_ to the browser bundle. The
-  // public build ships a placeholder — set VITE_VTOP_GATEWAY_URL to your own
-  // project (see .env.example).
+  // public build ships a placeholder, so nothing here names a deployed
+  // project: set VITE_VTOP_GATEWAY_URL in your own .env.
   return envOr('VITE_VTOP_GATEWAY_URL', 'https://your-project.supabase.co/functions/v1/vtop-gateway');
 }
 
-/** Supabase anon key — public, safe to bundle. Set your own (see .env.example). */
+/** Supabase anon key — set VITE_SUPABASE_ANON_KEY to your own project's key. */
 function anonKey(): string {
   return envOr('VITE_SUPABASE_ANON_KEY', 'your_supabase_anon_key');
 }
@@ -493,12 +494,7 @@ export class RealVTOPClient implements VTOPClient {
   async getAssignments(semesterId?: string): Promise<AssignmentRecord[]> {
     const data = await this.fetchData<{ courseCode: string; courseTitle: string; title: string; dueDate: string; weightage: number | null; status: string; id?: string }[]>('assignments', semesterId);
     return (data ?? []).map((a, i) => {
-      const raw = (a.status || '').toLowerCase();
-      const status: AssignmentRecord['status'] =
-        /submit/i.test(raw) && !/not/i.test(raw) ? 'Submitted'
-        : /grade/i.test(raw) ? 'Graded'
-        : /not/i.test(raw) ? 'Pending'
-        : 'Pending';
+      const status: AssignmentRecord['status'] = classifyAssignmentStatus(a.status);
       return {
         id: a.id || `${a.courseCode}-${i}`,
         courseCode: a.courseCode,
@@ -546,7 +542,10 @@ export class RealVTOPClient implements VTOPClient {
     const data = await this.fetchData<OdSummary>('od', semesterId);
     return {
       available: !!data.available,
-      limitHours: data.limitHours ?? 40,
+      // The cap is the gateway's policy number, not this client's. Used to be
+      // `?? 40`, which restated the rule in a second place and printed a
+      // denominator no response had supplied.
+      limitHours: typeof data.limitHours === 'number' && data.limitHours > 0 ? data.limitHours : null,
       totalOdHours: data.totalOdHours ?? 0,
       perCourse: data.perCourse ?? [],
     };

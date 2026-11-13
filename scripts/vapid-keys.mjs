@@ -36,7 +36,7 @@ const privateKey = Buffer.from(jwk.d, 'base64url').toString('base64url');
 console.log('');
 console.log('VAPID keys generated (P-256).');
 console.log('');
-console.log('PUBLIC KEY  → ship it with the app (VITE_VAPID_PUBLIC_KEY, or the default in src/lib/push.ts):');
+console.log('PUBLIC KEY  → put it in VITE_VAPID_PUBLIC_KEY and rebuild the app:');
 console.log('');
 console.log(`  VITE_VAPID_PUBLIC_KEY="${publicKey}"`);
 console.log('');

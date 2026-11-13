@@ -1,5 +1,6 @@
 import { AttendanceRecord } from '../types';
 import { localTodayIso } from '../../../utils/localDate';
+import { attendancePercentFromCounts } from '../../../utils/attendanceBands';
 import {
   parseDocument,
   findTableByHeaders,
@@ -96,7 +97,12 @@ export function parseAttendanceHtml(htmlString: string, withOutcome?: true) {
     const pctRaw = col.pct >= 0 ? cellText(row, col.pct) : '';
     let pct = toNumber(pctRaw);
     if (pct === null || pct < 0 || pct > 100) {
-      pct = Math.round((attended / total) * 1000) / 10;
+      // VTOP's own cell wins whenever it answers. When it does not, the counts
+      // are written in the same tenths every other surface uses — rounding here
+      // used to store 66.7 for a course whose VTOP cell reads 66.66, so the
+      // cached record, the cards and the debar filter quoted a number VTOP never
+      // wrote (see attendancePercentFromCounts).
+      pct = attendancePercentFromCounts(attended, total) ?? 0;
       warnings.push({ code: 'percentage-recomputed', detail: `Row ${courseCode}: percentage missing/invalid, recomputed.` });
     }
 

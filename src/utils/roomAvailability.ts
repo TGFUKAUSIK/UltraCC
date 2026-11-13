@@ -1,7 +1,7 @@
 /**
  * roomAvailability.ts — Free Classrooms & Labs engine.
  *
- * Mirrors FFCSonTheGo semantics: a room is "busy" for a period when
+ * Mirrors AmazeCC/FFCSonTheGo semantics: a room is "busy" for a period when
  * ANY scheduled class (theory OR lab) occupies it in that period, and "free"
  * otherwise. Nothing is invented:
  *
@@ -21,6 +21,11 @@
  *
  * A lab course "L31+L32" occupies TWO grid periods — both are computed from
  * the lab rows of the grid, so the room shows busy across the full block.
+ *
+ * Theory and lab rows share a period NUMBER but not a wall clock (lab periods
+ * start five minutes early), so each period's span is the union of its theory
+ * and lab rows. Room search answers "is anyone in there?", and the wider span is
+ * the only one that never answers "free" while a class is still running.
  */
 
 import slotGridJson from '../data/ffcs-slot-grid-chennai.json';
@@ -80,9 +85,14 @@ const PERIODS_BY_DAY: Record<RoomDay, RoomPeriod[]> = (() => {
   };
 
   for (const day of gridDays) {
-    // Theory rows and lab rows describe the SAME wall-clock periods on a day.
-    // Iterate the LONGER list (12 theory + 12 lab = same length in practice)
-    // and align by time; every row is a distinct period.
+    // Theory rows and lab rows describe the same period of the timetable clock,
+    // but not the same wall time: VIT's lab periods start five minutes before
+    // the theory period they share a number with, so Monday's second period is
+    // 08:55–09:45 for a class and 08:50–09:40 for a lab next door. This loop
+    // used to print the theory row's clock for both, which told a student
+    // arriving at 08:52 that a room whose lab had just started was free. A
+    // period's span is therefore the union of the two rows — a room is only
+    // offered as free when neither kind of class can be running inside it.
     const theoryRows = GRID.theory.filter((r) => !r.lunch && r.start && r.end);
     const labRows = GRID.lab.filter((r) => !r.lunch && r.start && r.end);
     const rowCount = Math.max(theoryRows.length, labRows.length);
@@ -91,16 +101,13 @@ const PERIODS_BY_DAY: Record<RoomDay, RoomPeriod[]> = (() => {
       const tRow = theoryRows[i];
       const lRow = labRows[i];
       if (!tRow && !lRow) continue;
-      // Use the theory row's time when present (grid rows are time-aligned);
-      // otherwise the lab row defines the period.
-      const start = tRow?.start ?? lRow!.start!;
-      const end = tRow?.end ?? lRow!.end!;
-      const lunch = tRow?.lunch || lRow?.lunch || false;
-      if (lunch) continue; // lunch rows carry no days/slots
+      const spans = [tRow, lRow].filter((r): r is GridRow => Boolean(r));
+      const start = spans.reduce((a, b) => (toMinutes(a.start!) <= toMinutes(b.start!) ? a : b)).start!;
+      const end = spans.reduce((a, b) => (toMinutes(a.end!) >= toMinutes(b.end!) ? a : b)).end!;
       const theorySlots: string[] = [];
       const labSlots: string[] = [];
-      if (tRow?.days?.[day]) theorySlots.push(tRow.days[day].toUpperCase());
-      if (lRow?.days?.[day]) labSlots.push(lRow.days[day].toUpperCase());
+      if (tRow?.days?.[day]) theorySlots.push(String(tRow.days[day]).toUpperCase());
+      if (lRow?.days?.[day]) labSlots.push(String(lRow.days[day]).toUpperCase());
       out[day].push({
         idx: idx++,
         start: to24h(start),
@@ -111,8 +118,8 @@ const PERIODS_BY_DAY: Record<RoomDay, RoomPeriod[]> = (() => {
         theorySlots,
         labSlots,
       });
-      // A grid lunch marker between rows does not consume an index (filtered
-      // above); periods stay contiguous 0..11.
+      // A grid lunch marker carries no slots and is filtered above, so it never
+      // consumes an index: periods stay contiguous 0..11.
     }
   }
   return out;
@@ -123,10 +130,27 @@ export function periodsForDay(day: RoomDay): RoomPeriod[] {
   return PERIODS_BY_DAY[day] ?? [];
 }
 
-/** Index of the period containing `nowMin` (−10 min grace), else −1. */
+/**
+ * How early a period already counts as "now".
+ *
+ * A student looking for a room at 07:52 wants the 08:00 period's rooms, so the
+ * current period starts ten minutes before its bell. That walk-up used to live
+ * only in this function while the "current period" marker beside it demanded
+ * the clock fall strictly inside the period, so the screen could show a selected
+ * period carrying no marker at all. One rule, one number, asked by both.
+ *
+ * The end is exclusive: lab periods begin on the minute a theory period ends, so
+ * minute 08:50 belongs to the next period, whose lab is already under way. Both
+ * kinds count against the same room, and the later claim is the safe answer.
+ */
+export const PERIOD_START_GRACE_MINUTES = 10;
+
+/** Index of the period running at `nowMin` (including its walk-up), else −1. */
 export function currentPeriodIndex(day: RoomDay, nowMin: number): number {
   const periods = periodsForDay(day);
-  return periods.findIndex((p) => !p.lunch && nowMin >= p.startMin - 10 && nowMin <= p.endMin);
+  return periods.findIndex(
+    (p) => !p.lunch && nowMin >= p.startMin - PERIOD_START_GRACE_MINUTES && nowMin < p.endMin,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +242,15 @@ const CATALOGUE_OCCUPANCY: Map<RoomDay, Map<string, Set<number>>> = (() => {
   }
   return byDay;
 })();
+
+/**
+ * True when the FFCS grid publishes any period for `day`. A day outside the
+ * published grid (Saturday, on Chennai) has no occupancy data at all — which
+ * must never be rendered as "every room is free".
+ */
+export function dayIsScheduled(day: RoomDay): boolean {
+  return PERIODS_BY_DAY[day].length > 0;
+}
 
 /**
  * Rooms the FFCS catalogue schedules on `day` during the period at

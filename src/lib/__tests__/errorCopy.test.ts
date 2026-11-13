@@ -16,7 +16,7 @@ describe('looksTechnical', () => {
   it('flags machine-authored shapes', () => {
     for (const raw of [
       'PostgrestError: could not find the function public.delete_qbank_paper(bigint, text)',
-      'The request endpoint is https://your-project.supabase.co/functions/v1/vtop-gateway',
+      'The request endpoint is https://other-project.supabase.co/functions/v1/vtop-gateway',
       'invalid peer certificate: UnknownIssuer',
       'upstream responded 500',
       'The origin returned 503 after 3 retries',

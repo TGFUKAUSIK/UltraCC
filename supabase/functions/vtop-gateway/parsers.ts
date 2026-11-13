@@ -20,6 +20,8 @@
  * live-tested reference and by the client-side fixture suite.
  */
 
+import { DAY_LABEL, slotMeetings } from './chennaiSlotMap.ts';
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -127,7 +129,31 @@ function to24hTime(raw: string): string {
   return `${String(h).padStart(2, '0')}:${min}`;
 }
 
-/** Normalize VTOP date formats to ISO (18-AUG-2026 / 19/08/2026 / 2026-09-21). */
+/**
+ * Whether (year, month, day) names a day that exists on the calendar.
+ *
+ * MIRROR OF `isRealCalendarDate` in src/lib/vtop/parsers/helpers.ts and
+ * src/utils/examUtils.ts — this function deploys standalone and cannot import
+ * from src/, so the check is copied and the guard
+ * src/utils/__tests__/realDatesLiveOnce.test.ts fails if the copies drift.
+ */
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
+  if (year < 1000 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
+
+/**
+ * Normalize VTOP date formats to ISO (18-AUG-2026 / 19/08/2026 / 2026-09-21),
+ * and hand back VTOP's own text whenever the pieces do not name a real day.
+ *
+ * Reshaping digits into an ISO without checking it used to invent dates:
+ * "08/18/2026" became "2026-18-08", and the clients that build a countdown from
+ * the string let Date roll month eighteen into a day eight months on. A date the
+ * gateway cannot vouch for is reported as the text it came from, which every
+ * surface already knows how to show as "not released yet".
+ */
 export function normalizeDate(raw: string): string {
   const value = raw.trim();
   if (!value) return '';
@@ -139,13 +165,19 @@ export function normalizeDate(raw: string): string {
   const mmm = value.match(/^(\d{1,2})[-/\s]+([A-Za-z]{3,4})[-/\s]+(\d{2,4})$/);
   if (mmm) {
     const month = monthMap[mmm[2].slice(0, 3).toLowerCase()];
-    if (month) {
-      const yyyy = mmm[3].length === 2 ? `20${mmm[3]}` : mmm[3];
+    const yyyy = mmm[3].length === 2 ? `20${mmm[3]}` : mmm[3];
+    if (month && isRealCalendarDate(Number(yyyy), Number(month), Number(mmm[1]))) {
       return `${yyyy}-${month}-${mmm[1].padStart(2, '0')}`;
     }
+    return value;
   }
   const dmy = value.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  if (dmy) {
+    if (isRealCalendarDate(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]))) {
+      return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    }
+    return value;
+  }
   return value;
 }
 
@@ -281,6 +313,24 @@ export interface GatewayAttendanceRecord {
 }
 
 /**
+ * An attendance percentage the gateway had to work out for itself, in tenths of
+ * a percent — truncated, never rounded up.
+ *
+ * MIRROR OF `attendancePercentFromCounts` in src/utils/attendanceBands.ts. This
+ * function is deployed as a standalone Deno asset and cannot import from src/,
+ * so the expression is copied; `attendanceFigurePrecision.test.ts` fails if the
+ * two ever drift or if a second copy appears.
+ *
+ * The copy it replaced rounded, which put 2/3 on record as 66.7 while VTOP's own
+ * percentage cell for the same course reads 66.66 — and every card prints that
+ * as 66.6. The student then saw one course at two figures depending on whether
+ * VTOP's cell parsed, and the cache kept the number VTOP never wrote.
+ */
+function percentageFromCounts(attended: number, conducted: number): number {
+  return Math.floor((attended / conducted) * 1000 + 1e-6) / 10;
+}
+
+/**
  * Real shape: table#getStudentDetails with Course Code / Course Title /
  * Course Type / Slot / Attended / Total / Percentage (+ Faculty Name) columns
  * in any order. Header-driven; rows without a plausible course code are
@@ -331,7 +381,9 @@ export function parseAttendanceHtml(html: string): GatewayAttendanceRecord[] {
     if (!Number.isFinite(attended) || !Number.isFinite(total) || total <= 0) continue;
 
     let pct = parseFloat(cell(col.pct));
-    if (!Number.isFinite(pct) || pct < 0 || pct > 100) pct = Math.round((attended / total) * 1000) / 10;
+    // VTOP's own cell is the authority whenever it answers; the counts are only
+    // written in when it does not, and then in the same tenths the client prints.
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) pct = percentageFromCounts(attended, total);
     pct = Math.min(100, Math.max(0, pct));
 
     const courseType = cell(col.type) || (courseCode.endsWith('L') ? 'ELA' : 'ETH');
@@ -442,44 +494,6 @@ function parseCourseList(html: string): { courses: CourseMeta[]; found: boolean 
   return { courses, found: courses.length > 0 };
 }
 
-// ---------------------------------------------------------------------------
-// Chennai slot map — authoritative VIT Chennai slot → day/time timings.
-// Public VIT scheduling facts used in production for VIT Chennai students
-// (slot letter determines the
-// meeting days AND times: e.g. A1 meets Mon 8:00–8:50 and Wed 8:55–9:45).
-// ---------------------------------------------------------------------------
-
-const CHENNAI_SLOT_TIMES_RAW: Record<string, Record<string, string>> = {
-  MON: { A1: '8:00-8:50', F1: '8:55-9:45', D1: '9:50-10:40', TB1: '10:45-11:35', TG1: '11:40-12:30', S11: '12:35-1:25', A2: '2:00-2:50', F2: '2:55-3:45', D2: '3:50-4:40', TB2: '4:45-5:35', TG2: '5:40-6:30', S3: '6:35-7:25', L1: '8:00-8:50', L2: '8:50-9:40', L3: '9:50-10:40', L4: '10:40-11:30', L5: '11:40-12:30', L6: '12:30-1:20', L31: '2:00-2:50', L32: '2:50-3:40', L33: '3:50-4:40', L34: '4:40-5:30', L35: '5:40-6:30', L36: '6:30-7:20' },
-  TUE: { B1: '8:00-8:50', G1: '8:55-9:45', E1: '9:50-10:40', TC1: '10:45-11:35', TAA1: '11:40-12:30', L12: '12:30-1:20', B2: '2:00-2:50', G2: '2:55-3:45', E2: '3:50-4:40', TC2: '4:45-5:35', TAA2: '5:40-6:30', S1: '6:35-7:25', L7: '8:00-8:50', L8: '8:50-9:40', L9: '9:50-10:40', L10: '10:40-11:30', L11: '11:40-12:30', L37: '2:00-2:50', L38: '2:50-3:40', L39: '3:50-4:40', L40: '4:40-5:30', L41: '5:40-6:30', L42: '6:30-7:20' },
-  WED: { C1: '8:00-8:50', A1: '8:55-9:45', F1: '9:50-10:40', TD1: '10:45-11:35', TBB1: '11:40-12:30', L18: '12:35-1:25', C2: '2:00-2:50', A2: '2:55-3:45', F2: '3:50-4:40', TD2: '4:45-5:35', TBB2: '5:40-6:30', S4: '6:35-7:25', L13: '8:00-8:50', L14: '8:50-9:40', L15: '9:50-10:40', L16: '10:40-11:30', L17: '11:40-12:30', L43: '2:00-2:50', L44: '2:50-3:40', L45: '3:50-4:40', L46: '4:40-5:30', L47: '5:40-6:30', L48: '6:30-7:20' },
-  THU: { D1: '8:00-8:50', B1: '8:55-9:45', G1: '9:50-10:40', TE1: '10:45-11:35', TCC1: '11:40-12:30', L24: '12:35-1:25', D2: '2:00-2:50', B2: '2:55-3:45', G2: '3:50-4:40', TE2: '4:45-5:35', TCC2: '5:40-6:30', S2: '6:35-7:25', L19: '8:00-8:50', L20: '8:50-9:40', L21: '9:50-10:40', L22: '10:40-11:30', L23: '11:40-12:30', L49: '2:00-2:50', L50: '2:50-3:40', L51: '3:50-4:40', L52: '4:40-5:30', L53: '5:40-6:30', L54: '6:30-7:20' },
-  FRI: { E1: '8:00-8:50', C1: '8:55-9:45', TA1: '9:50-10:40', TF1: '10:45-11:35', TDD1: '11:40-12:30', S15: '12:35-1:25', E2: '2:00-2:50', C2: '2:55-3:45', TA2: '3:50-4:40', TF2: '4:45-5:35', TDD2: '5:40-6:30', L25: '8:00-8:50', L26: '8:50-9:40', L27: '9:50-10:40', L28: '10:40-11:30', L29: '11:40-12:30', L30: '12:30-1:20', L55: '2:00-2:50', L56: '2:50-3:40', L57: '3:50-4:40', L58: '4:40-5:30', L59: '5:40-6:30', L60: '6:30-7:20' },
-  SAT: { X11: '8:00-8:50', X12: '8:55-9:45', Y11: '9:50-10:40', Y12: '10:45-11:35', S8: '11:40-12:30', S8B: '12:35-1:25', X21: '2:00-2:50', Z21: '2:55-3:45', Y21: '3:50-4:40', W21: '4:45-5:35', W22: '5:40-6:30', Z22: '6:35-7:25', L71: '8:00-8:50', L72: '8:50-9:40', L73: '9:50-10:40', L74: '10:40-11:30', L75: '11:40-12:30', L76: '12:30-1:20', L77: '2:00-2:50', L78: '2:50-3:40', L79: '3:50-4:40', L80: '4:40-5:30', L81: '5:40-6:30', L82: '6:30-7:20' },
-};
-
-/** Chennai schedule is 12-hour with afternoon times written as 1:xx–7:xx. */
-function to24hSlotTime(t: string): string {
-  const m = t.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return '';
-  let h = parseInt(m[1], 10);
-  if (h < 8) h += 12;
-  return `${String(h).padStart(2, '0')}:${m[2]}`;
-}
-
-/** Every weekly (day, start, end) meeting for a slot code. */
-function slotDayTimes(slot: string): { day: string; start: string; end: string }[] {
-  const key = (slot || '').trim().toUpperCase();
-  const out: { day: string; start: string; end: string }[] = [];
-  for (const [day, slots] of Object.entries(CHENNAI_SLOT_TIMES_RAW)) {
-    const raw = slots[key];
-    if (!raw) continue;
-    const [s, e] = raw.split('-').map((t) => t.trim());
-    out.push({ day: GRID_WEEKDAYS[day], start: to24hSlotTime(s), end: to24hSlotTime(e) });
-  }
-  return out;
-}
-
 interface GridSession {
   day: string;
   slot: string;
@@ -489,11 +503,6 @@ interface GridSession {
   endTime: string;
   type: 'THEORY' | 'LAB';
 }
-
-const GRID_WEEKDAYS: Record<string, string> = {
-  SUN: 'Sunday', MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday',
-  THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday',
-};
 
 /**
  * Real grid: a table whose first data row starts with a weekday (SUN..SAT),
@@ -508,7 +517,7 @@ function parseTimetableGrid(html: string): { sessions: GridSession[]; found: boo
   let tbl: RegExpExecArray | null;
   while ((tbl = tableRe.exec(html)) !== null) {
     const rows = tableRows(tbl[0]);
-    const isGrid = rows.some((r) => r.length > 0 && GRID_WEEKDAYS[r[0].toUpperCase()] !== undefined);
+    const isGrid = rows.some((r) => r.length > 0 && DAY_LABEL[r[0].toUpperCase()] !== undefined);
     if (!isGrid) continue;
 
     let theoryStart: string[] = [];
@@ -552,8 +561,8 @@ function parseTimetableGrid(html: string): { sessions: GridSession[]; found: boo
         else labEnd = row.slice(1);
         continue;
       }
-      if (GRID_WEEKDAYS[c0]) {
-        currentDay = GRID_WEEKDAYS[c0];
+      if (DAY_LABEL[c0]) {
+        currentDay = DAY_LABEL[c0];
         addSlots(row.slice(2), theoryStart, theoryEnd, 'THEORY', currentDay);
         continue;
       }
@@ -596,7 +605,7 @@ export function parseTimetableHtml(html: string): GatewayTimetableSlot[] {
       const meetings =
         c.slots.length > 0
           ? c.slots.flatMap((slot) =>
-              slotDayTimes(slot).map((m) => ({ slot, day: m.day, start: m.start, end: m.end }))
+              slotMeetings(slot).map((m) => ({ slot, day: m.day, start: m.start, end: m.end }))
             )
           : [];
       if (meetings.length === 0) {
@@ -875,17 +884,32 @@ function weightedScoreOf(c: GatewayComponentMark): number {
  * second "Assignment - II" row keeps its own value).
  */
 function mergeMarksRecords(a: GatewayCourseMarksRecord, b: GatewayCourseMarksRecord): GatewayCourseMarksRecord {
-  const filled = (c?: GatewayComponentMark) => !!c && c.maxMarks > 0 && Number.isFinite(c.scored);
+  // A row VTOP actually graded, not merely a declared one carrying max 0/10
+  // with a placeholder scored 0. Without the status test a pending theory quiz
+  // counted as a real value and beat the lab half's graded quiz for the slot.
+  const filled = (c?: GatewayComponentMark) =>
+    !!c && c.maxMarks > 0 && Number.isFinite(c.scored) && c.status === 'Evaluated';
   /** Rows kept in their slot; rows displaced by the other half are returned. */
   const displaced: GatewayComponentMark[] = [];
+  const keep = (row: GatewayComponentMark, key: MarkKey) => {
+    // `finalizeRecord` titled every empty placeholder slot, so a title alone
+    // does not mean VTOP published a row. Only a declared row (a max or a
+    // weight) — even one it has not graded — is worth showing beside the
+    // winner; a placeholder says nothing and must not become an extra.
+    if (row.maxMarks > 0 || row.weightageMax > 0) {
+      displaced.push({ ...row, title: row.title || componentTitle(key) });
+    }
+  };
   const pick = (key: MarkKey, x?: GatewayComponentMark, y?: GatewayComponentMark): GatewayComponentMark => {
     if (!x) return y || emptyComponent(UNDECLARED_WEIGHTAGE);
     if (!y) return x;
-    if (filled(y) && !filled(x)) {
-      if (filled(x)) displaced.push({ ...x, title: x.title || componentTitle(key) });
-      return y;
-    }
-    if (filled(x) && filled(y)) displaced.push({ ...y, title: y.title || componentTitle(key) });
+    // The graded row wins the slot. The other half is retained verbatim —
+    // previously an ungraded-but-declared row (a lab quiz still pending) was
+    // dropped here without a trace, so its weight vanished from the course.
+    if (filled(y) && !filled(x)) { keep(x, key); return y; }
+    if (filled(x) && !filled(y)) { keep(y, key); return x; }
+    if (filled(x) && filled(y)) { keep(y, key); return x; }
+    keep(y, key);
     return x;
   };
   const merged: GatewayCourseMarksRecord = {
@@ -979,7 +1003,13 @@ function parseNestedComponents(
       (record.extraComponents ??= []).push({ title: compTitle, maxMarks: max, scored, weightageMax, weightageScored: 0, status, part });
       continue;
     }
-    record[key] = { title: compTitle, maxMarks: max, scored, weightageMax, weightageScored: 0, status, part };
+    const parsed: GatewayComponentMark = { title: compTitle, maxMarks: max, scored, weightageMax, weightageScored: 0, status, part };
+    // A second row that maps to an already-filled slot (an embedded course's
+    // lab quiz beside its theory quiz, or two halves of one DA) must not
+    // overwrite the first: that silently erased a real mark and its weight from
+    // every total. Keep the first in its slot and the second as a VTOP row.
+    if (record[key].title) (record.extraComponents ??= []).push(parsed);
+    else record[key] = parsed;
   }
 }
 
@@ -1001,10 +1031,16 @@ function parseLevel1Assessments(innerHtml: string, record: GatewayCourseMarksRec
     if (!title) continue;
     const statusRaw = (row[4] || '').trim().toLowerCase();
     const rawScored = (row[5] || '').trim();
-    const isAb =
-      /^(ab|absent|na|-|--|pending)$/i.test(rawScored.replace(/\s+/g, '')) ||
-      statusRaw.includes('pending') ||
-      statusRaw.includes('ab');
+    // VTOP declares an assessment before it is graded and leaves 0 in the
+    // scored cell, so "ungraded" must never be published as an Evaluated zero
+    // — that phantom 0 then drags every internal total and Course Intel number
+    // down. Match the status cell on whole tokens (a bare `includes('ab')` also
+    // fires on "applicable") plus the negated phrases the portal really serves.
+    const scoredIsPlaceholder = /^(ab|absent|na|n\/a|-+|pending)$/i.test(rawScored.replace(/\s+/g, ''));
+    const statusIsPending =
+      /(^|[^a-z])(ab|absent|pending|n\/a)([^a-z]|$)/.test(statusRaw) ||
+      /\bnot\s+(evaluated|graded|checked|published|declared|available|entered)\b/.test(statusRaw);
+    const isAb = scoredIsPlaceholder || statusIsPending;
     const max = parseFloat(row[2]) || 0;
     const weightageMax = parseFloat(row[3]) || 0;
     const scored = isAb || !rawScored ? 0 : parseFloat(rawScored) || 0;
@@ -1062,7 +1098,7 @@ function parseLevel1Assessments(innerHtml: string, record: GatewayCourseMarksRec
       });
       continue;
     }
-    record[key] = {
+    const parsed: GatewayComponentMark = {
       title,
       maxMarks: max,
       scored,
@@ -1072,6 +1108,11 @@ function parseLevel1Assessments(innerHtml: string, record: GatewayCourseMarksRec
       ...(weightageMark !== undefined ? { weightageMark } : {}),
       part,
     };
+    // A second row for a filled slot is another assessment VTOP served, not a
+    // replacement for the first. Overwriting dropped the earlier mark and its
+    // declared weight from every internal total; keep both.
+    if (record[key].title) (record.extraComponents ??= []).push(parsed);
+    else record[key] = parsed;
   }
 }
 
@@ -2122,6 +2163,19 @@ export interface AttendanceDetailCounts {
   total: number;
   /** OD time in class-hours (duration-based: a 2-period lab counts as 2). */
   odHours: number;
+  /**
+   * Every row VTOP listed, in VTOP's own order: the date cell (DD-MMM-YYYY),
+   * the "Day And Timing" cell, and the status cell. The source of the
+   * date-wise attendance view — no date here is ever invented; a row only
+   * appears if VTOP printed it.
+   */
+  dates: AttendanceDetailRow[];
+}
+
+export interface AttendanceDetailRow {
+  date: string;
+  timing: string;
+  status: string;
 }
 
 /** How many ~50-minute class periods a "Day And Timing" cell spans. */
@@ -2146,33 +2200,102 @@ function periodsFromTiming(timing: string): number {
   return dur <= 0 ? 1 : Math.max(1, Math.round(dur / 50));
 }
 
+/** A VTOP per-class date cell: DD-MMM-YYYY (the form the client re-parses). The
+ *  match is anchored at the cell's start so a date printed with a trailing
+ *  weekday ("01-AUG-2026 Monday") still yields the date, while a sentence that
+ *  merely mentions a date does not. */
+const DETAIL_DATE_RE = /^(\d{1,2}[-/][A-Za-z]{3}[-/]\d{2,4})\b/;
+/** A clock range inside the "Day And Timing" cell (08:00-08:50, 11:00 AM - 01:40 PM). */
+const DETAIL_TIME_RE = /\d{1,2}:\d{2}/;
+
+/** Which of VTOP's three per-class words a cell holds, or null when it is not
+ *  a status at all — so a slot code ("A1") or a bare number can never be read
+ *  as one. Members are trimmed and case-folded first. */
+function attendanceStatusKind(raw: string): 'od' | 'present' | 'absent' | null {
+  const s = (raw || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (s === 'present') return 'present';
+  if (s === 'absent') return 'absent';
+  if (s === 'on duty' || s === 'onduty' || s === 'od') return 'od';
+  return null;
+}
+
+/** The date at the head of a cell, or '' when the cell is not a date. */
+function detailDate(raw: string): string {
+  return (raw || '').trim().match(DETAIL_DATE_RE)?.[1] ?? '';
+}
+
 /**
  * Parse one per-class attendance detail response (processViewAttendanceDetail)
  * and tally statuses. "On Duty" rows count as OD (never as present/absent);
- * each OD row contributes its period-span as hours. Mirrors the verified
- * reference behavior independently (regex, no DOM).
+ * each OD row contributes its period-span as hours.
+ *
+ * The live Chennai page (corroborated by the UniCC client, `table.table tr`
+ * with ≥5 columns, date at index 1 and status at index 4) prints no reliable
+ * header row we can key off from position alone — a wrapper row often occupies
+ * the document's first `<tr>`. So the column map is taken from a header row
+ * wherever it sits (a few rows down), and each row is anchored on its own date
+ * cell: a row counts as a class only when it prints a date, which keeps wrapper
+ * and summary rows — that carry VTOP's status words but no date — out of the
+ * tally. Dates and statuses are VTOP's own text, never inferred from position.
  */
 export function parseAttendanceDetail(html: string): AttendanceDetailCounts {
   if (isLoginOrExpiredPage(html)) {
     throw new ParseError('attendance-detail', 'Received the login page instead of attendance detail.');
   }
-  const counts: AttendanceDetailCounts = { present: 0, absent: 0, onDuty: 0, total: 0, odHours: 0 };
+  const counts: AttendanceDetailCounts = { present: 0, absent: 0, onDuty: 0, total: 0, odHours: 0, dates: [] };
   const rows = tableRows(html);
   if (!rows.length) return counts;
-  const headers = rows[0].map(normalizeHeader);
-  const statusIdx = headers.findIndex((h) => h.includes('status'));
-  const timingIdx = headers.findIndex((h) => h.includes('timing') || (h.includes('day') && h.includes('time')));
-  for (let i = 1; i < rows.length; i++) {
+
+  // Find the real header row in the opening rows; its cells name the columns.
+  let headerRow = -1;
+  let dateIdx = -1;
+  let statusIdx = -1;
+  let timingIdx = -1;
+  const scan = Math.min(rows.length, 12);
+  for (let i = 0; i < scan; i++) {
+    const cells = rows[i].map(normalizeHeader);
+    const d = cells.findIndex((c) => c === 'date');
+    const s = cells.findIndex((c) => c.includes('status'));
+    const t = cells.findIndex((c) => c.includes('timing') || (c.includes('day') && c.includes('time')));
+    if (d >= 0 || s >= 0) { headerRow = i; dateIdx = d; statusIdx = s; timingIdx = t; break; }
+  }
+  const firstData = headerRow >= 0 ? headerRow + 1 : 0;
+
+  for (let i = firstData; i < rows.length; i++) {
     const row = rows[i];
-    if (!row.length) continue;
-    const status = ((statusIdx >= 0 ? row[statusIdx] : row[row.length - 1] ?? '') || '').toLowerCase();
-    if (!status) continue;
+    // A class row has several cells; a two-cell label/value row is not one.
+    if (row.length < 3) continue;
+
+    // Date: the header's column when it names one, else whichever cell reads
+    // like a VTOP date. No date ⇒ not a class ⇒ skip (never a placeholder row).
+    let date = dateIdx >= 0 ? detailDate(row[dateIdx] ?? '') : '';
+    if (!date) {
+      for (const cell of row) { const d = detailDate(cell); if (d) { date = d; break; } }
+    }
+    if (!date) continue;
+
+    // Status: the header's column when it names one, else the cell that is one
+    // of VTOP's words. Never the cell's position — that used to read "A1".
+    let statusRaw = statusIdx >= 0 ? (row[statusIdx] ?? '').trim() : '';
+    if (!attendanceStatusKind(statusRaw)) {
+      statusRaw = '';
+      for (const cell of row) { if (attendanceStatusKind(cell)) { statusRaw = cell.trim(); break; } }
+    }
+
+    // Timing: the header's column when it names one, else the cell with a clock.
+    let timing = timingIdx >= 0 ? (row[timingIdx] ?? '').trim() : '';
+    if (!DETAIL_TIME_RE.test(timing)) {
+      const hit = row.find((cell) => DETAIL_TIME_RE.test(cell ?? ''));
+      timing = hit ? hit.trim() : '';
+    }
+
     counts.total++;
-    if (/on\s*duty/.test(status)) {
-      counts.onDuty++;
-      counts.odHours += periodsFromTiming(timingIdx >= 0 ? row[timingIdx] ?? '' : '');
-    } else if (/present/.test(status)) counts.present++;
-    else if (/absent/.test(status)) counts.absent++;
+    counts.dates.push({ date, timing, status: statusRaw });
+
+    const kind = attendanceStatusKind(statusRaw);
+    if (kind === 'od') { counts.onDuty++; counts.odHours += periodsFromTiming(timing); }
+    else if (kind === 'present') counts.present++;
+    else if (kind === 'absent') counts.absent++;
   }
   return counts;
 }
@@ -2305,6 +2428,9 @@ export function parseAcademicCalendar(html: string, monthKey: string): GatewayCa
     if (!spans.length) continue;
     const day = parseInt(spans[0], 10);
     if (!Number.isFinite(day) || day < 1 || day > 31) continue;
+    // A stray "30" in a February grid is not a day; writing it into the calendar
+    // would hand the client an ISO string no clock can answer for.
+    if (!isRealCalendarDate(year, month, day)) continue;
 
     const info = spans[1] || '';
     const instructional = /^instructional day/i.test(info);
@@ -2505,10 +2631,14 @@ export function parseArrearHtml(html: string, semesterId: string, semesterName: 
     const cell = (c: number) => (c >= 0 && c < cells.length ? cells[c] : '');
     const code = cell(codeIdx);
     if (!code || !isPlausibleCourseCode(code)) continue;
+    // VTOP writes "Not Cleared" for an arrear that is still open, and
+    // /clear/ matches inside it — so a live backlog used to be published as
+    // cleared and dropped out of the pending count. Test the negation first.
     const statusRaw = cell(statusIdx).toLowerCase();
+    const negated = /\bnot\s|\bno\b|n\/a|never|unfulfilled|outstanding|pending|invalid/.test(statusRaw);
     let status: GatewayArrear['status'] = 'Pending';
-    if (/clear|pass|completed/i.test(statusRaw)) status = 'Cleared';
-    else if (/registered|enrolled|rego/i.test(statusRaw)) status = 'Registered';
+    if (!negated && /clear|pass|completed/i.test(statusRaw)) status = 'Cleared';
+    else if (!negated && /registered|enrolled|rego/i.test(statusRaw)) status = 'Registered';
     out.push({
       semesterId,
       semesterName,

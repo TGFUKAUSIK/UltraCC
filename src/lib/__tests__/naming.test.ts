@@ -13,8 +13,32 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { navGroups, serviceGroups } from '../../components/MeridianHeader';
 import { buildPaletteIndex } from '../commandPalette';
+
+const ROOT = process.cwd();
+
+/** Every component source file, comments stripped — what can reach a screen. */
+function renderFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(join(ROOT, dir))) {
+    if (entry === '__tests__') continue;
+    const full = join(ROOT, dir, entry);
+    if (statSync(full).isDirectory()) out.push(...renderFiles(`${dir}/${entry}`));
+    else if (/\.tsx$/.test(entry)) out.push(full);
+  }
+  return out;
+}
+
+const codeOnly = (path: string) =>
+  readFileSync(path, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+const COMPONENTS = renderFiles('src/components');
+const relative = (p: string) => p.slice(ROOT.length + 1).split('\\').join('/');
 
 /** Tabs that are actions in the services menu rather than destinations. */
 const MENU_ACTIONS = new Set(['settings', 'sync-refresh']);
@@ -43,6 +67,23 @@ describe('Student Communities naming', () => {
         expect(String(label)).not.toBe('Clubs');
       }
     }
+  });
+});
+
+describe('Question Bank naming', () => {
+  it('calls the past-paper feature what the menu calls it, inside the feature too', () => {
+    const label = authoritative.get('qbank');
+    expect(label).toBe('Question Bank');
+    const screens = COMPONENTS.filter((f) => /QbankView|ToolsHub/.test(f));
+    expect(screens.length).toBe(2);
+    for (const file of screens) {
+      expect(codeOnly(file), `${relative(file)} never says the feature's name`).toContain(label);
+    }
+  });
+
+  it('has retired the rival two-word name', () => {
+    const stragglers = COMPONENTS.filter((f) => codeOnly(f).includes('Question Paper Bank')).map(relative);
+    expect(stragglers).toEqual([]);
   });
 });
 

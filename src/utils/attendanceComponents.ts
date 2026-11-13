@@ -20,6 +20,7 @@
  */
 
 import type { AttendanceRecord } from '../types';
+import { attendancePercentFromCounts } from './attendanceBands';
 
 export type AttendanceComponent = 'Theory' | 'Lab' | 'Project' | 'Unknown';
 
@@ -121,10 +122,18 @@ const sum = (rows: AttendanceRecord[]) =>
     { attended: 0, conducted: 0 },
   );
 
-/** One decimal, matching how VTOP displays percentages. */
+/**
+ * A combined component, in tenths of a percent.
+ *
+ * A course's lab can be two VTOP rows, so this is a place an attendance figure
+ * is *derived* rather than read from VTOP — the same place the attendance parser
+ * stands when VTOP sends counts without a percentage. Both call the one shared
+ * rule, `attendancePercentFromCounts`, so a derived figure is never a different
+ * number from the label that prints it (see `attendanceBands` for why it
+ * truncates).
+ */
 function toPercentage(attended: number, conducted: number): number | null {
-  if (!conducted || conducted <= 0) return null;
-  return Math.round((attended / conducted) * 1000) / 10;
+  return attendancePercentFromCounts(attended, conducted);
 }
 
 function buildComponent(kind: AttendanceComponent, rows: AttendanceRecord[]): ComponentAttendance {

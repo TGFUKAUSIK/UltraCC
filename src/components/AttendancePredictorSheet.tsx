@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { AlertCircle, Calculator, Check, X } from 'lucide-react';
 import type { AttendanceRecord, TimetableSlot } from '../types';
 import { projectAttendance, type AttendancePredictionAction } from '../utils/attendancePredictor';
-import { TIMETABLE_DAYS } from '../utils/timetableGrid';
+import { attendancePercentLabel } from '../utils/attendanceBands';
+import { getTimetableDaySlots, TIMETABLE_DAYS } from '../utils/timetableGrid';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useDialog } from '../hooks/useDialog';
 
@@ -19,7 +20,8 @@ const dayFromDate = (dateValue: string): TimetableSlot['day'] | null => {
   return TIMETABLE_DAYS.includes(day) ? day : null;
 };
 
-const pct = (value: number) => `${value.toFixed(1)}%`;
+/** Attendance figures are written out in exactly one place — see attendanceBands. */
+const pct = (value: number) => `${attendancePercentLabel(value)}%`;
 
 export const AttendancePredictorSheet: React.FC<Props> = ({ timetable, attendance, initialDay = 'Monday', onClose }) => {
   useBodyScrollLock(true);
@@ -28,7 +30,7 @@ export const AttendancePredictorSheet: React.FC<Props> = ({ timetable, attendanc
   const [selectedDate, setSelectedDate] = useState('');
   const [showAdvancedDate, setShowAdvancedDate] = useState(false);
   const [actions, setActions] = useState<Record<string, AttendancePredictionAction>>({});
-  const daySlots = useMemo(() => timetable.filter((slot) => slot.day === selectedDay).sort((a, b) => a.startTime.localeCompare(b.startTime)), [timetable, selectedDay]);
+  const daySlots = useMemo(() => getTimetableDaySlots(timetable, selectedDay), [timetable, selectedDay]);
   const projection = useMemo(() => projectAttendance(daySlots, attendance, actions), [daySlots, attendance, actions]);
 
   const setAction = (id: string, action: AttendancePredictionAction) => {

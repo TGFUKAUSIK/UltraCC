@@ -39,7 +39,7 @@ export const VIT_CHENNAI_SCHOOLS: readonly VitSchool[] = [
   {
     acronym: 'SELECT',
     name: 'School of Electrical Engineering',
-    branches: ['electrical and electronics', 'electronics and power', 'power electronics', 'electrical engineering', 'e&e', 'eee', 'm.e. power'],
+    branches: ['electrical and computer science', 'electrical & computer science', 'electrical and electronics', 'electronics and power', 'power electronics', 'electrical engineering', 'e&e', 'eee', 'm.e. power'],
   },
   {
     acronym: 'SENSE',
@@ -129,4 +129,18 @@ export function schoolForBranch(branch: string | null | undefined): string {
 export function resolveSchool(vtopSchool: string | null | undefined, branch: string | null | undefined): string {
   if (isVitSchoolValue(vtopSchool)) return (vtopSchool || '').trim();
   return schoolForBranch(branch);
+}
+
+/**
+ * The school's own long name, for display. `resolveSchool` and the branch
+ * fallback both speak in acronyms ("SELECT", "SCOPE"), and a bare acronym on a
+ * student's own profile reads like a placeholder rather than their school — so
+ * the screens print the name. Any value that is not one of our acronyms (a long
+ * form, a value VTOP wrote in full, or "") is returned untouched.
+ */
+export function schoolLabel(value: string | null | undefined): string {
+  const v = (value || '').trim();
+  if (!v) return '';
+  const match = VIT_CHENNAI_SCHOOLS.find((s) => s.acronym.toLowerCase() === v.toLowerCase());
+  return match ? match.name : v;
 }

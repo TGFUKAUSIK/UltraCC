@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  X, Calendar, Palette, KeyRound, Trash2, CheckCircle, Save, Loader2, Eye, EyeOff, GraduationCap, RefreshCw, BellRing, LayoutDashboard,
+  X, Calendar, Palette, KeyRound, Trash2, CheckCircle, Save, Loader2, Eye, EyeOff, GraduationCap,
+  RefreshCw, BellRing, LayoutDashboard, ShieldCheck, Bot,
 } from 'lucide-react';
 import { getFreshnessTtlMs, setFreshnessTtlHours } from '../lib/vtop/syncCoordinator';
 import { SemesterInfo } from '../lib/vtop/types';
@@ -8,12 +9,14 @@ import {
   ACCENT_OPTIONS, AccentColor, getSavedCredentials, saveCredentials, clearSavedCredentials,
   getSavedLmsCredentials, saveLmsCredentials, clearSavedLmsCredentials,
   getGeminiApiKey, saveGeminiApiKey, clearGeminiApiKey, saveAccentColor, getAppTheme, saveAppTheme, THEME_OPTIONS, AppTheme, saveFeatureMode,
+  getShowProfilePhoto, saveShowProfilePhoto,
 } from '../lib/settings';
 import type { FeatureMode } from '../lib/navVisibility';
-import { CAMPUS_LIST } from '../lib/campus';
+import { CAMPUS_LIST, readStoredCampusId, writeStoredCampusId, type CampusId } from '../lib/campus';
 import { humanErrorCopy } from '../lib/errorCopy';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useDialog } from '../hooks/useDialog';
+import { useSheetDrag } from '../hooks/useSheetDrag';
 import type { BackgroundPushController } from '../hooks/useBackgroundPush';
 
 interface SettingsModalProps {
@@ -57,8 +60,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     Math.max(1, Math.round(getFreshnessTtlMs() / 3_600_000)),
   );
   const [lmsSyncing, setLmsSyncing] = useState(false);
-  const [lmsMessage, setLmsMessage] = useState<string | null>(null);
+  const [lmsResult, setLmsResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // Read through the guarded helper: the campus list asks this question once per
+  // row while rendering, and unguarded storage throws on a locked-down phone.
+  const [storedCampus, setStoredCampus] = useState<CampusId>(() => readStoredCampusId());
+  const [campusNotice, setCampusNotice] = useState<string | null>(null);
   const [appTheme, setAppTheme] = useState<AppTheme>(() => getAppTheme());
+  const [showProfilePhoto, setShowProfilePhoto] = useState<boolean>(() => getShowProfilePhoto());
+
+  // Throw-to-dismiss, shared with the sign-in sheet and the More sheet. Inert
+  // while the sheet is working — a half-finished LMS sync or a clear-all would
+  // be hidden, not cancelled, by flinging the panel away.
+  const { offset, handlers: sheetDragHandlers } = useSheetDrag({
+    onDismiss: onClose,
+    enabled: !lmsSyncing && !clearing,
+  });
 
   /**
    * Re-read the stored values every time the dialog opens. App keeps this modal
@@ -78,6 +94,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setApiKey(getGeminiApiKey());
     setShowPassword(false);
     setShowLmsPassword(false);
+    setShowProfilePhoto(getShowProfilePhoto());
+    setStoredCampus(readStoredCampusId());
+    setCampusNotice(null);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -89,7 +108,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleSaveCredentials = () => {
     saveCredentials({ regNo, password });
-    flash('VTOP credentials saved on this device.');
+    flash('VTOP login saved for this tab. The password is not written to storage.');
   };
 
   const handleSaveApiKey = () => {
@@ -113,10 +132,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     flash(`Surface theme set to ${theme}.`);
   };
 
+  const handleProfilePhoto = (show: boolean) => {
+    setShowProfilePhoto(show);
+    saveShowProfilePhoto(show);
+    flash(show ? 'VTOP profile photo shown across the app.' : 'Initials avatar shown instead of your profile photo.');
+  };
+
   const handleFeatureMode = (next: FeatureMode) => {
     saveFeatureMode(next);
     onModeChange?.(next);
-    flash(`Feature mode set to ${next}.`);
+    flash(next === 'minimal'
+      ? 'Minimal mode on — Dashboard, Attendance, Marks & Grades, Proctor and Settings.'
+      : 'Minimal mode off — every UltraCC feature is back.');
   };
 
   const handleClear = async () => {
@@ -147,137 +174,159 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     // Save click made a correct username/password appear to be ignored.
     saveLmsCredentials({ username: lmsUsername, password: lmsPassword });
     setLmsSyncing(true);
-    setLmsMessage(null);
+    setLmsResult(null);
     try {
       const result = await onLmsSync();
-      setLmsMessage(result.message);
+      // The colour follows the sync's own verdict. Reading the sentence for the
+      // word "failed" painted "LMS synced with 3 issues." in success green.
+      setLmsResult({ ok: result.ok, message: result.message });
+    } catch (err) {
+      setLmsResult({ ok: false, message: humanErrorCopy(err, 'LMS sync did not finish. Try again.') });
     } finally {
       setLmsSyncing(false);
     }
   };
 
+  const activeAccent = document.documentElement.getAttribute('data-accent') || 'blue';
+
   return (
-    <div className="ultracc-settings-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-50 backdrop-blur-md animate-fadeIn">
+    <div className="uc-scrim ultracc-settings-overlay fixed inset-0 flex items-center justify-center p-3 sm:p-6">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="ultracc-settings-title"
-        className="ultracc-settings-panel w-full max-w-xl bg-white border border-zinc-200 rounded-3xl shadow-2xl overflow-hidden max-h-[92dvh] overflow-y-auto"
+        className="ultracc-settings-panel uc-plate uc-sheet"
+        style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}
       >
-        <div className="p-6 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-600">
-              <Palette className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 id="ultracc-settings-title" className="text-lg font-extrabold text-zinc-900 tracking-tight">Settings</h3>
-              <p className="text-xs text-zinc-500 font-medium">Semester, appearance, saved login & AI key</p>
-            </div>
+        <header className="uc-plate-head uc-sheet-head is-draggable" {...sheetDragHandlers}>
+          <div className="uc-dir-id">
+            <span className="uc-cap"><Palette className="uc-dir-inline" aria-hidden="true" />Preferences</span>
+            <h3 id="ultracc-settings-title" className="uc-dir-name">Settings</h3>
+            <p className="uc-note">Semester, appearance, saved login and your AI key.</p>
           </div>
-          <button onClick={onClose} aria-label="Close settings" className="p-2 text-zinc-500 hover:text-zinc-900 rounded-xl hover:bg-zinc-100">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+          <div className="uc-dir-rail">
+            <button type="button" onClick={onClose} aria-label="Close settings" className="uc-dir-ico">
+              <X aria-hidden="true" />
+            </button>
+          </div>
+        </header>
 
-        <div className="p-6 space-y-6 text-xs text-zinc-900">
+        <div className="uc-sheet-body">
+
+          {/* Minimal mode — first, because it decides what the rest of the app
+              offers. This is the only control that changes navigation. */}
+          <section className="uc-set">
+            <p className="uc-cap"><LayoutDashboard aria-hidden="true" />Minimal mode</p>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={mode === 'minimal'}
+              aria-label="Minimal mode"
+              onClick={() => handleFeatureMode(mode === 'minimal' ? 'complete' : 'minimal')}
+              className={`uc-switch-row${mode === 'minimal' ? ' is-on' : ''}`}
+            >
+              <span className="uc-set-row-main">
+                <b>{mode === 'minimal' ? 'On' : 'Off'}</b>
+                <small>Dashboard, Attendance, Marks &amp; Grades, Proctor and Settings</small>
+              </span>
+              <span className="uc-switch-track" aria-hidden="true"><span className="uc-switch-knob" /></span>
+            </button>
+            <p className="uc-set-hint">
+              {mode === 'minimal'
+                ? 'The rail, the tab bar and search show only those five. Your sync keeps running, and turning this off brings everything back.'
+                : 'Turn this on to keep only the Dashboard, Attendance, Marks & Grades, Proctor and Settings in the rail, the tab bar and search.'}
+            </p>
+          </section>
 
           {/* Semester */}
-          <section className="space-y-2">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <Calendar className="h-4 w-4 acc-text" /> Academic Semester
-            </p>
+          <section className="uc-set">
+            <p className="uc-cap"><Calendar aria-hidden="true" />Academic semester</p>
             {semesters.length > 0 ? (
               <select
                 aria-label="Active semester"
                 value={selectedSemesterId}
                 onChange={(e) => onSemesterChange(e.target.value)}
                 disabled={semesterLoading}
-                className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+                className="uc-dir-select"
               >
                 {semesters.map((s) => (
                   <option key={s.id} value={s.id}>{s.name} {s.isCurrent ? '(Active)' : ''}</option>
                 ))}
               </select>
             ) : (
-              <p className="text-[11px] text-zinc-500">
+              <p className="uc-set-hint">
                 No semesters yet — log in first, then choose your semester here. Your choice is saved and reused automatically.
               </p>
             )}
-            <p className="text-[10px] text-zinc-500">Changing semester re-syncs attendance, timetable, marks, exams &amp; OD.</p>
-          </section>
-
-          {/* Feature mode */}
-          <section className="space-y-2">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <LayoutDashboard className="h-4 w-4 acc-text" /> Feature Mode
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handleFeatureMode('minimal')}
-                className={`text-left rounded-xl border px-3 py-3 transition cursor-pointer ${mode === 'minimal' ? 'acc-soft acc-border' : 'border-zinc-200 bg-white'}`}
-              >
-                <span className="block text-xs font-extrabold text-zinc-900">Minimal</span>
-                <span className="block text-[10px] text-zinc-500 mt-1">Timetable, attendance, exams and marks only</span>
-              </button>
-              <button
-                onClick={() => handleFeatureMode('complete')}
-                className={`text-left rounded-xl border px-3 py-3 transition cursor-pointer ${mode === 'complete' ? 'acc-soft acc-border' : 'border-zinc-200 bg-white'}`}
-              >
-                <span className="block text-xs font-extrabold text-zinc-900">Complete</span>
-                <span className="block text-[10px] text-zinc-500 mt-1">Every UltraCC feature</span>
-              </button>
-            </div>
-            <p className="text-[10px] text-zinc-500">Minimal keeps just the daily essentials in the rail, menu and search; complete shows everything.</p>
+            <p className="uc-set-hint">Changing semester re-syncs attendance, timetable, marks, exams &amp; OD.</p>
           </section>
 
           {/* Surface theme */}
-          <section className="space-y-2">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <Palette className="h-4 w-4 acc-text" /> Surface Theme
-            </p>            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <section className="uc-set">
+            <p className="uc-cap"><Palette aria-hidden="true" />Surface theme</p>
+            <div className="uc-set-3">
               {THEME_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => handleSurfaceTheme(opt.id)}
-                  className={`text-left rounded-xl border px-3 py-3 transition cursor-pointer ${appTheme === opt.id ? 'acc-soft acc-border' : 'border-zinc-200 bg-white'}`}
+                  aria-pressed={appTheme === opt.id}
+                  className={`uc-opt${appTheme === opt.id ? ' is-on' : ''}`}
                 >
-                  <span className="block text-xs font-extrabold text-zinc-900">{opt.label}</span>
-                  <span className="block text-[10px] text-zinc-500 mt-1">{opt.description}</span>
+                  {opt.label}
+                  <small>{opt.description}</small>
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-zinc-500">Keeps the same UltraCC design system across light and dark surfaces.</p>
+            <p className="uc-set-hint">Keeps the same UltraCC design system across light and dark surfaces.</p>
           </section>
 
           {/* Accent theme */}
-          <section className="space-y-2">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <Palette className="h-4 w-4 acc-text" /> Theme Colour
-            </p>
-            <div className="flex flex-wrap gap-2.5">
+          <section className="uc-set">
+            <p className="uc-cap"><Palette aria-hidden="true" />Theme colour</p>
+            <div className="uc-sws">
               {ACCENT_OPTIONS.map((opt) => (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => handleTheme(opt.id)}
                   title={opt.label}
-                  className="w-9 h-9 rounded-full border-2 border-zinc-200 hover:scale-110 transition cursor-pointer flex items-center justify-center"
+                  aria-label={`${opt.label} accent`}
+                  aria-pressed={activeAccent === opt.id}
+                  className="uc-sw"
                   style={{ backgroundColor: opt.swatch }}
                 >
-                  {opt.id === (document.documentElement.getAttribute('data-accent') || 'blue') && (
-                    <CheckCircle className="h-4 w-4 text-zinc-900" />
-                  )}
+                  {activeAccent === opt.id && <CheckCircle size={15} aria-hidden="true" />}
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-zinc-500">Applied instantly across the app.</p>
+            <p className="uc-set-hint">Applied instantly across the app.</p>
+          </section>
+
+          {/* VTOP profile photo */}
+          <section className="uc-set">
+            <p className="uc-cap"><Eye aria-hidden="true" />Profile photo</p>
+            <div className="uc-set-row">
+              <span className="uc-set-row-main">
+                <b>{showProfilePhoto ? 'Show VTOP profile picture' : 'Show initials avatar'}</b>
+                <small>Applies to the header, dashboard and profile surfaces.</small>
+              </span>
+              <button
+                type="button"
+                onClick={() => handleProfilePhoto(!showProfilePhoto)}
+                aria-pressed={showProfilePhoto}
+                className={`uc-dir-go${showProfilePhoto ? '' : ' is-on'}`}
+              >
+                {showProfilePhoto ? 'Turn off' : 'Turn on'}
+              </button>
+            </div>
+            <p className="uc-set-hint">Turning this off only changes what is rendered — your photo is never deleted.</p>
           </section>
 
           {/* Auto-refresh freshness */}
-          <section className="space-y-2">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 acc-text" /> Auto Refresh
-            </p>
+          <section className="uc-set">
+            <p className="uc-cap"><RefreshCw aria-hidden="true" />Auto refresh</p>
             <select
               aria-label="Automatic refresh interval"
               value={ttlHours}
@@ -286,7 +335,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 setTtlHours(h);
                 setFreshnessTtlHours(h);
               }}
-              className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 focus:border-blue-500 focus:outline-none"
+              className="uc-dir-select"
             >
               <option value={1}>Refresh when data is 1 hour old</option>
               <option value={6}>Refresh when data is 6 hours old (default)</option>
@@ -295,119 +344,124 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <option value={48}>Refresh when data is 2 days old</option>
               <option value={168}>Refresh when data is 1 week old</option>
             </select>
-            <p className="text-[10px] text-zinc-500">
+            <p className="uc-set-hint">
               Cached data always shows instantly. When it gets older than this, UltraCC refreshes it in the background (on open, when you return to the app, or when the connection comes back) — only while you're signed in, never offline, and never more than once per freshness window.
             </p>
           </section>
 
           {/* VTOP credentials */}
-          <section className="space-y-2.5">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <KeyRound className="h-4 w-4 acc-text" /> Saved VTOP Login
+          <section className="uc-set">
+            <p className="uc-cap"><KeyRound aria-hidden="true" />Saved VTOP login</p>
+            <p className="uc-set-hint">
+              The registration number is kept <b>on this device</b> to prefill the login form. The password is kept in this tab's memory only — it is never written to storage, so it is asked for again after the app is closed and reopened.
             </p>
-            <p className="text-[10px] text-zinc-500 leading-relaxed">
-              Stored <strong>only on this device</strong> (localStorage) and used to prefill the login form. Never sent anywhere except to VTOP when you log in.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] text-zinc-500 font-medium mb-1">Registration Number or VTOP username</label>
+            <div className="uc-set-grid">
+              <label className="uc-dir-field">
+                <span>Registration number or VTOP username</span>
                 <input
                   type="text"
                   value={regNo}
                   // Stored as typed; the gateway uppercases the login id the
                   // same way VTOP's own login field does before submitting.
                   onChange={(e) => setRegNo(e.target.value)}
-                  className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none"
+                  className="uc-dir-input uc-num"
                 />
-              </div>
-              <div>
-                <label className="block text-[11px] text-zinc-500 font-medium mb-1">VTOP Password</label>
-                <div className="relative">
+              </label>
+              <div className="uc-dir-field">
+                <label htmlFor="settings-vtop-password">VTOP password</label>
+                <div className="uc-login-pass">
                   <input
+                    id="settings-vtop-password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none pr-9"
+                    className="uc-dir-input uc-num"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-900"
+                    aria-label={showPassword ? 'Hide VTOP password' : 'Show VTOP password'}
+                    aria-pressed={showPassword}
+                    className="uc-dir-ico"
+                    title={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                   </button>
                 </div>
               </div>
             </div>
-            <button
-              onClick={handleSaveCredentials}
-              className="px-4 py-2 acc-bg text-zinc-900 font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 hover:opacity-90"
-            >
-              <Save className="h-3.5 w-3.5" /> Save Login
+            <button type="button" onClick={handleSaveCredentials} className="uc-dir-go acc-bg uc-set-act">
+              <Save aria-hidden="true" />Save login
             </button>
           </section>
 
           {/* LMS (Moodle) account */}
-          <section className="space-y-2.5">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <GraduationCap className="h-4 w-4 acc-text" /> LMS Account (lms.vit.ac.in)
-            </p>
-            <p className="text-[10px] text-zinc-500 leading-relaxed">
+          <section className="uc-set">
+            <p className="uc-cap"><GraduationCap aria-hidden="true" />LMS account · lms.vit.ac.in</p>
+            <p className="uc-set-hint">
               Moodle uses a separate LMS account. Enter the exact username/email shown in VTOP under My Credentials, not your VTOP registration number. Credentials stay in memory for this session and are sent only to the UltraCC gateway over HTTPS.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] text-zinc-500 font-medium mb-1">LMS Username / email</label>
+            <div className="uc-set-grid">
+              <label className="uc-dir-field">
+                <span>LMS username or email</span>
                 <input
                   type="text"
                   value={lmsUsername}
                   onChange={(e) => setLmsUsername(e.target.value.trim())}
                   placeholder="Use the username shown in VTOP My Credentials"
-                  className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none"
+                  className="uc-dir-input uc-num"
                 />
-              </div>
-              <div>
-                <label className="block text-[11px] text-zinc-500 font-medium mb-1">LMS Password</label>
-                <div className="relative">
+              </label>
+              <div className="uc-dir-field">
+                <label htmlFor="settings-lms-password">LMS password</label>
+                <div className="uc-login-pass">
                   <input
+                    id="settings-lms-password"
                     type={showLmsPassword ? 'text' : 'password'}
                     value={lmsPassword}
                     onChange={(e) => setLmsPassword(e.target.value)}
-                    className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none pr-9"
+                    className="uc-dir-input uc-num"
                   />
                   <button
                     type="button"
                     onClick={() => setShowLmsPassword(!showLmsPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-900"
+                    aria-label={showLmsPassword ? 'Hide LMS password' : 'Show LMS password'}
+                    aria-pressed={showLmsPassword}
+                    className="uc-dir-ico"
+                    title={showLmsPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showLmsPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {showLmsPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                   </button>
                 </div>
               </div>
             </div>
-            <button
-              onClick={handleSaveLmsCredentials}
-              className="px-4 py-2 acc-bg text-zinc-900 font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 hover:opacity-90"
-            >
-              <Save className="h-3.5 w-3.5" /> Save LMS Login
+            <button type="button" onClick={handleSaveLmsCredentials} className="uc-dir-go acc-bg uc-set-act">
+              <Save aria-hidden="true" />Save LMS login
             </button>
-            <div className="pt-1 border-t border-zinc-200">
+
+            <div className="uc-set-sync">
               <button
+                type="button"
                 onClick={handleLmsSync}
                 disabled={lmsSyncing || !onLmsSync}
-                className="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-zinc-900 text-xs font-extrabold transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                aria-busy={lmsSyncing}
+                className="uc-dir-go acc-bg uc-set-act"
               >
-                {lmsSyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SyncIcon />}
+                {lmsSyncing
+                  ? <Loader2 className="spin" aria-hidden="true" />
+                  : <RefreshCw aria-hidden="true" />}
                 {lmsSyncing ? 'Syncing LMS…' : 'Sync Now'}
               </button>
-              {lmsMessage && (
-                <p className={`text-[11px] mt-2 font-medium ${lmsMessage.includes('failed') ? 'text-rose-700' : 'text-emerald-700'}`}>{lmsMessage}</p>
+              {lmsResult && (
+                <p className={`text-[11px] font-medium ${lmsResult.ok ? 'text-emerald-700' : 'text-rose-700'}`} role="status">
+                  {lmsResult.message}
+                </p>
               )}
               {lmsSyncErrors && lmsSyncErrors.length > 0 && (
-                <div className="mt-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-[11px] space-y-1" role="status">
-                  <p className="font-extrabold text-amber-700">Some LMS data could not be fetched</p>
+                <div className="uc-note-row uc-note-row--warn uc-note-row--stack" role="status">
+                  <p className="uc-note-row-head">Some LMS data could not be fetched</p>
                   {lmsSyncErrors.map((e, i) => (
-                    <p key={i}><span className="font-bold">{e.label}:</span> {humanErrorCopy(e.error, 'The LMS did not answer, so this was not loaded.')}</p>
+                    <p key={i} className="uc-note-row-line"><b>{e.label}:</b> {humanErrorCopy(e.error, 'The LMS did not answer, so this was not loaded.')}</p>
                   ))}
                 </div>
               )}
@@ -415,52 +469,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </section>
 
           {/* Gemini API key */}
-          <section className="space-y-2.5">
-            <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-              <SparklesIcon /> Gemini API Key (AI Advisor)
-            </p>
-            <p className="text-[10px] text-zinc-500 leading-relaxed">
+          <section className="uc-set">
+            <p className="uc-cap"><Bot aria-hidden="true" />Gemini API key · AI advisor</p>
+            <p className="uc-set-hint">
               Used only by the AI Advisor chat — sent directly to Google Gemini. Stored on this device.
             </p>
-            <div className="relative">
-              <input
-                type={showKey ? 'text' : 'password'}
-                aria-label="Gemini API key"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your Gemini API key"
-                className="w-full bg-white border border-zinc-200 rounded-xl px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:border-blue-500 focus:outline-none pr-9"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-900"
-              >
-                {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </button>
+            <div className="uc-dir-field">
+              <label htmlFor="settings-gemini-key">Gemini API key</label>
+              <div className="uc-login-pass">
+                <input
+                  id="settings-gemini-key"
+                  type={showKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Paste your Gemini API key"
+                  className="uc-dir-input uc-num"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={showKey ? 'Hide Gemini API key' : 'Show Gemini API key'}
+                  aria-pressed={showKey}
+                  className="uc-dir-ico"
+                  title={showKey ? 'Hide key' : 'Show key'}
+                >
+                  {showKey ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+                </button>
+              </div>
             </div>
-            <button
-              onClick={handleSaveApiKey}
-              className="px-4 py-2 acc-bg text-zinc-900 font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 hover:opacity-90"
-            >
-              <Save className="h-3.5 w-3.5" /> Save API Key
+            <button type="button" onClick={handleSaveApiKey} className="uc-dir-go acc-bg uc-set-act">
+              <Save aria-hidden="true" />Save API key
             </button>
           </section>
 
           {/* Background notifications (works with the browser closed) */}
           {backgroundPush && (
-            <section className="space-y-2.5">
-              <p className="font-extrabold text-zinc-900 flex items-center gap-2">
-                <BellRing className="h-4 w-4 acc-text" /> Background Notifications
+            <section className="uc-set">
+              <p className="uc-cap"><BellRing aria-hidden="true" />Background notifications</p>
+              <p className="uc-set-hint">
+                Class reminders (10 minutes before) and LMS quiz windows arrive even when UltraCC is closed. Only your reminder times are uploaded — never marks, attendance or credentials.
               </p>
-              <p className="text-[10px] text-zinc-500 leading-relaxed">
-                Class reminders (10 minutes before) and LMS quiz windows arrive even when UltraCC is closed.
-                Only your reminder times are uploaded — never marks, attendance or credentials.
-              </p>
-              <div className="flex items-center justify-between gap-3 border border-zinc-200 rounded-xl px-3 py-2.5">
-                <span className="text-xs font-bold text-zinc-800">
-                  {backgroundPush.enabled ? 'On' : 'Off'}
-                  <span className="block text-[10px] text-zinc-500 font-medium mt-0.5">
+              <div className="uc-set-row">
+                <span className="uc-set-row-main">
+                  <b>{backgroundPush.enabled ? 'On' : 'Off'}</b>
+                  <small>
                     {backgroundPush.message
                       ?? (!backgroundPush.supported
                         ? 'This browser cannot receive background notifications.'
@@ -472,119 +524,94 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               ? `${backgroundPush.upcoming} reminders scheduled on the server.`
                               : 'Reminders currently only arrive while UltraCC is open.')}
                     {backgroundPush.enabled && backgroundPush.healthNote && (
-                      <span className="block text-[10px] mt-0.5 acc-text font-semibold">{backgroundPush.healthNote}</span>
+                      <span className="uc-set-row-note">{backgroundPush.healthNote}</span>
                     )}
-                  </span>
+                  </small>
                 </span>
                 <button
                   type="button"
                   onClick={() => void backgroundPush.toggle()}
                   disabled={backgroundPush.busy || !backgroundPush.supported || !backgroundPush.configured || backgroundPush.permission === 'denied'}
                   aria-pressed={backgroundPush.enabled}
-                  className={`shrink-0 px-3.5 py-2 rounded-xl text-[11px] font-extrabold transition cursor-pointer disabled:opacity-50 ${
-                    backgroundPush.enabled ? 'bg-white border border-zinc-200 text-zinc-900' : 'acc-bg text-white'
-                  }`}
+                  className={`uc-dir-go${backgroundPush.enabled ? '' : ' is-on'}`}
                 >
-                  {backgroundPush.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : backgroundPush.enabled ? 'Turn off' : 'Enable'}
+                  {backgroundPush.busy ? <Loader2 className="spin" aria-hidden="true" /> : backgroundPush.enabled ? 'Turn off' : 'Enable'}
                 </button>
               </div>
             </section>
           )}
 
-          {/* Campus Selection */}
-          <section className="space-y-2.5">
-            <p className="font-extrabold text-sky-600 flex items-center gap-2">
-              <GraduationCap className="h-4 w-4" /> Campus
-            </p>
-            <div className="space-y-2">
-              {CAMPUS_LIST.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => {
-                    localStorage.setItem('ultracc:campus', c.id);
-                    // Force a page reload to re-initialize with the new campus
-                    window.location.reload();
-                  }}
-                  className={`w-full flex items-center justify-between gap-3 border rounded-xl px-3 py-2.5 transition cursor-pointer ${
-                    c.id === (localStorage.getItem('ultracc:campus') || 'chennai')
-                      ? 'bg-sky-500/10 border-sky-500/30'
-                      : 'bg-zinc-50 border-zinc-200 hover:border-zinc-200'
-                  }`}
-                >
-                  <div className="min-w-0 text-left">
-                    <p className="text-sm font-bold text-zinc-900">{c.label}</p>
-                    <p className="text-[10px] text-zinc-500 truncate">{c.vtopHost}</p>
-                    {c.note && <p className="text-[10px] text-amber-600/80 mt-0.5">{c.note}</p>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {c.id === (localStorage.getItem('ultracc:campus') || 'chennai') && (
-                      <span className="text-[9px] font-bold text-sky-700">ACTIVE</span>
-                    )}
-                    <span
-                      className={`text-[9px] font-bold px-2 py-1 rounded-full border ${
-                        c.verified
-                          ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/25'
-                          : 'bg-zinc-100 text-zinc-500 border-zinc-200'
-                      }`}
-                    >
-                      {c.verified ? 'VERIFIED' : 'CONFIGURED'}
+          {/* Campus selection */}
+          <section className="uc-set">
+            <p className="uc-cap"><GraduationCap aria-hidden="true" />Campus</p>
+            <div className="uc-set-list">
+              {CAMPUS_LIST.map((c) => {
+                const active = c.id === storedCampus;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    // A campus UltraCC cannot sign in to is shown for the answer
+                    // it is, not as a choice that leads to empty screens.
+                    disabled={!c.verified}
+                    aria-disabled={!c.verified}
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (!c.verified) return;
+                      // A device that will not store the choice would reload back
+                      // to the same campus, so say so instead of reloading.
+                      if (!writeStoredCampusId(c.id)) {
+                        setCampusNotice('This browser will not save settings, so the campus stays where it is.');
+                        return;
+                      }
+                      // Force a page reload to re-initialize with the new campus
+                      window.location.reload();
+                    }}
+                    className={`uc-pick${active ? ' is-on' : ''}`}
+                  >
+                    <span className="uc-pick-main">
+                      <b>{c.label}</b>
+                      <small className="uc-num">{c.vtopHost}</small>
+                      {c.note && <small>{c.note}</small>}
                     </span>
-                  </div>
-                </button>
-              ))}
+                    <span className="uc-pick-rail">
+                      {active && <span className="uc-dir-tag is-live">ACTIVE</span>}
+                      <span className={`uc-dir-tag${c.verified ? ' is-good' : ''}`}>
+                        {c.verified ? 'AVAILABLE' : 'COMING SOON'}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-[10px] text-zinc-500">
-              Select your VIT campus. Chennai is verified; others are configured with official VTOP hosts but parsers are not yet live-verified. Changing campus requires re-login.
+            {campusNotice && (
+              <p className="uc-set-warn" role="status">{campusNotice}</p>
+            )}
+            <p className="uc-set-hint">
+              UltraCC signs in to VIT Chennai today. The other campuses are listed so you know what is coming; picking one will not work yet. Changing campus signs you out, so you will need to sign in again.
             </p>
           </section>
 
-          <section className="space-y-2">
-            <p className="font-extrabold text-rose-600 flex items-center gap-2">
-              <Trash2 className="h-4 w-4" /> Local Data
-            </p>
-            <button
-              onClick={handleClear}
-              disabled={clearing}
-              className="px-4 py-2 bg-rose-500/10 border border-rose-500/30 text-rose-700 font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 hover:bg-rose-500/20 disabled:opacity-50"
-            >
-              {clearing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          {/* Local data */}
+          <section className="uc-set">
+            <p className="uc-cap"><Trash2 aria-hidden="true" />Local data</p>
+            <button type="button" onClick={handleClear} disabled={clearing} className="uc-dir-go uc-danger uc-set-act">
+              {clearing ? <Loader2 className="spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
               Clear all cached VTOP data
             </button>
-            <p className="text-[10px] text-zinc-500">Removes synced data from this device. Your VTOP account is untouched.</p>
+            <p className="uc-set-hint">Removes synced data from this device. Your VTOP account is untouched.</p>
           </section>
-
-          {savedFlash && (
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-700 flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 shrink-0" /> {savedFlash}
-            </div>
-          )}
         </div>
 
-        <div className="p-5 bg-white border-t border-zinc-200 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 acc-bg text-zinc-900 font-extrabold rounded-2xl text-xs transition cursor-pointer"
-          >
-            Done
-          </button>
-        </div>
+        <footer className="uc-plate-foot uc-sheet-foot">
+          <span role="status" aria-live="polite">
+            {savedFlash
+              ? (<><CheckCircle aria-hidden="true" />{savedFlash}</>)
+              : (<><ShieldCheck aria-hidden="true" />Settings are stored on this device only.</>)}
+          </span>
+          <button type="button" onClick={onClose} className="uc-dir-go acc-bg">Done</button>
+        </footer>
       </div>
     </div>
   );
 };
-
-function SyncIcon() {
-  return (
-    <span className="acc-text">
-      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" /></svg>
-    </span>
-  );
-}
-
-function SparklesIcon() {
-  return (
-    <span className="acc-text">
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.9 5.7L19.6 9l-5.7 1.9L12 16.6l-1.9-5.7L4.4 9l5.7-1.3L12 2zM19 14l.9 2.6L22.5 17.5l-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9L19 14z" /></svg>
-    </span>
-  );
-}

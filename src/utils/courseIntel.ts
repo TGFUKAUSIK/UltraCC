@@ -3,7 +3,9 @@
  * provides (attendance + assessment marks). All calculations reuse the
  * established models:
  *
- *   - attendance / safe bunks: calculateBunkStats (utils/nextActionEngine)
+ *   - attendance / safe bunks: calculateBunkStats (utils/nextActionEngine),
+ *     against the student's saved target — the same number the Academics slider
+ *     sets — so the two card sets on that screen can never disagree.
  *   - grade bands: the same 90/80/70/60/50/40 thresholds the what-if
  *     simulator uses (VTOP's standard weighted-total bands).
  *
@@ -13,37 +15,38 @@
  */
 
 import { AttendanceRecord, CourseMarks } from '../types';
+import { ATTENDANCE_TARGET_DEFAULT } from '../lib/settings';
 import { calculateBunkStats } from './nextActionEngine';
 import { curriculumAwareTotal, resolveMarkingScheme, type CourseKind } from './markingSchemes';
 import { attendanceComponent, type AttendanceComponent } from './attendanceComponents';
 import { isEvaluatedAssessment, pendingWeightage } from './assessmentStatus';
+import { TARGET_SCORES, VIT_BANDS, buildCourseModel, gradeFromVitPercent, solveTargetFAT, weightedMarksFor } from './gradeModel';
 
 export interface GradeBand {
   grade: string;
   min: number;
 }
 
-export const GRADE_BANDS: GradeBand[] = [
-  { grade: 'S', min: 90 },
-  { grade: 'A', min: 80 },
-  { grade: 'B', min: 70 },
-  { grade: 'C', min: 60 },
-  { grade: 'D', min: 50 },
-  { grade: 'E', min: 40 },
-  { grade: 'F', min: 0 },
-];
+/**
+ * VIT's bands, read from `gradeModel`.
+ *
+ * This module kept its own copy of the seven thresholds, which is how one
+ * course could read as an A on these cards and a B on the predictor the same
+ * second the bands changed in one place. The shape stays for the cards' own
+ * dropdowns; the numbers are not owned here.
+ */
+export const GRADE_BANDS: GradeBand[] = VIT_BANDS.map(({ grade, min }) => ({ grade, min }));
 
 export function gradeForTotal(total: number): string {
-  for (const band of GRADE_BANDS) {
-    if (total >= band.min) return band.grade;
-  }
-  return 'F';
+  return gradeFromVitPercent(total) ?? 'F';
 }
 
 interface EvaluatedComponent {
   scored: number;
   max: number;
   weightage: number;
+  /** VTOP's own weighted mark for the row, when it served one. */
+  weightageMark?: number;
   name: string;
 }
 
@@ -63,12 +66,12 @@ export function evaluatedComponents(marks: CourseMarks): EvaluatedComponent[] {
     // A row VTOP declared but has not graded is NOT a zero — it is excluded
     // here and counted as open weight by pendingComponents() instead.
     if (isEvaluatedAssessment(comp)) {
-      out.push({ name, scored: comp!.scored as number, max: comp!.max as number, weightage: comp!.weightage });
+      out.push({ name, scored: comp!.scored as number, max: comp!.max as number, weightage: comp!.weightage, weightageMark: comp!.weightageMark });
     }
   }
   for (const extra of marks.extraComponents ?? []) {
     if (isEvaluatedAssessment(extra)) {
-      out.push({ name: extra.title, scored: extra.scored, max: extra.max, weightage: extra.weightage });
+      out.push({ name: extra.title, scored: extra.scored, max: extra.max, weightage: extra.weightage, weightageMark: extra.weightageMark });
     }
   }
   return out;
@@ -109,6 +112,12 @@ export interface CourseIntel {
    * produces two rows (theory + lab), each with its own attendance figures.
    */
   component: AttendanceComponent;
+  /**
+   * The attendance bar these numbers were measured against — the student's own
+   * target, not always VTOP's 75%. The card prints it so "3 safe bunks" cannot
+   * be read as "3 bunks and still pass VTOP".
+   */
+  targetPercent: number;
   /** Course kind the marking scheme was resolved for ('unknown' = undetermined). */
   curriculum: CourseKind;
   /** Resolved scheme label ('Marking scheme unavailable' when undetermined). */
@@ -148,27 +157,32 @@ export interface CourseIntel {
 export type TargetGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'E';
 
 /**
- * Build the intelligence row for one course. `targetGrade` defaults to B —
- * the caller (UI) lets the student change it.
+ * Build the intelligence row for one course. `targetGrade` defaults to B and
+ * `targetPercent` to VTOP's bar — the UI passes the student's own target from
+ * the Academics slider, because these cards sit on the same screen as that
+ * slider and a course cannot be "safe" here and "at risk" there.
  */
 export function buildCourseIntel(
   attendance: AttendanceRecord | undefined,
   marks: CourseMarks | undefined,
   targetGrade: TargetGrade = 'B',
+  targetPercent: number = ATTENDANCE_TARGET_DEFAULT,
+  /** VTOP register number — its first two digits decide the theory/lab rule. */
+  regNo?: string,
 ): CourseIntel | null {
   if (!attendance && !marks) return null;
 
   // --- Attendance (reuse the established safe-bunk arithmetic) ---
   const bunk = attendance
-    ? calculateBunkStats(attendance, 75)
+    ? calculateBunkStats(attendance, targetPercent)
     : null;
   const attRisk: CourseIntel['attendance']['risk'] = !bunk
     ? 'borderline'
-    : bunk.status === 'Debarred Risk'
-      ? 'risk'
-      : bunk.safeToBunk
+    : bunk.state === 'on-target'
+      ? bunk.safeToBunk
         ? 'safe'
-        : 'borderline';
+        : 'borderline'
+      : 'risk';
 
   // --- Marks ---
   const components = marks ? evaluatedComponents(marks) : [];
@@ -176,13 +190,13 @@ export function buildCourseIntel(
   const weightedSoFar = marks
     // Curriculum-aware total: lab/project courses weight Experiments/Reviews
     // by their own schemes; unknown curricula keep the raw weighted sum.
-    ? (curriculumAwareTotal(marks) ?? components.reduce((sum, c) => sum + (c.scored / c.max) * c.weightage, 0))
+    ? (curriculumAwareTotal(marks) ?? components.reduce((sum, c) => sum + weightedMarksFor(c), 0))
     : 0;
 
   // --- Target arithmetic ---
   let target: CourseIntel['target'] = null;
   if (marks && components.length > 0) {
-    const targetMin = GRADE_BANDS.find((b) => b.grade === targetGrade)?.min ?? 70;
+    const targetMin = TARGET_SCORES[targetGrade];
     const weightNeeded = Math.max(0, targetMin - weightedSoFar);
     const remaining = weightRemainingTotal(marks);
     // The FAT VTOP has declared but not graded: this is the row the "score
@@ -203,13 +217,24 @@ export function buildCourseIntel(
     else status = 'achievable';
 
     // The next pending assessment: FAT when unevaluated (the final one).
+    //
+    // How many marks that paper must carry is `solveTargetFAT`'s answer — the
+    // same number the Grade Predictor and the Marks Simulator show for the same
+    // target — and never less than VIT's 40%-of-FAT minimum. This module used to
+    // divide the leftover weight by the FAT's weightage here, which asked a
+    // student for 15/100 on a paper that fails them below 40, and for the whole
+    // remaining need on a course whose other internals were still open.
     let nextAssessment: CourseIntel['target']['nextAssessment'] = null;
-    if (pendingFat && weightNeeded > 0) {
-      const neededWeight = Math.min(weightNeeded, pendingFat.weightage);
-      // Epsilon guard: floating-point noise must not round 98.0 up to 99.
-      const rawExact = (neededWeight / pendingFat.weightage) * pendingFat.max;
-      const raw = Math.ceil(rawExact - 1e-9);
-      nextAssessment = { name: 'FAT', raw, max: pendingFat.max };
+    if (pendingFat) {
+      const solved = solveTargetFAT(buildCourseModel(marks, { regNo }), TARGET_SCORES[targetGrade]);
+      if (!solved.isUnknown && solved.fatMax > 0) {
+        const fromTarget = solved.isAlreadyAchieved ? 0 : (solved.requiredRaw ?? 0);
+        const floor = Math.max(fromTarget, solved.vitFatMinimumRaw ?? 0);
+        // A paper cannot be asked for more than it has, and VTOP's own marks are
+        // whole numbers: round the ask up, never to a false decimal.
+        const raw = Math.min(Math.ceil(floor - 1e-9), solved.fatMax);
+        nextAssessment = { name: 'FAT', raw, max: solved.fatMax };
+      }
     }
     target = { grade: targetGrade, weightNeeded, weightRemaining: remaining, status, nextAssessment, pendingFat: pendingFat ? { max: pendingFat.max, weightage: pendingFat.weightage } : null };
   }
@@ -219,10 +244,14 @@ export function buildCourseIntel(
   if (attRisk === 'risk' && bunk) {
     nextAction = bunk.message;
   } else if (target?.status === 'pending_final') {
-    const fatMax = target.pendingFat?.max ?? 100;
-    const fatW = target.pendingFat?.weightage ?? 0;
-    const rawNeeded = Math.ceil(((Math.min(weightNeededFor(target), fatW)) / fatW) * fatMax - 1e-9);
-    nextAction = `Only the final exam remains. Score ~${rawNeeded}/${fatMax} in FAT to reach ${target.grade}.`;
+    if (target.nextAssessment) {
+      const { raw, max } = target.nextAssessment;
+      nextAction = `Only the final exam remains. Score ~${raw}/${max} in FAT to reach ${target.grade}.`;
+    } else {
+      // No solve (nothing graded yet, or no FAT weight from VTOP): say what is
+      // still owed in weight marks rather than inventing a paper score.
+      nextAction = `Only the final exam remains, and ${Math.round(target.weightNeeded)} more weight marks are needed for ${target.grade}.`;
+    }
   } else if (target?.status === 'awaiting_final') {
     // The final exam is not declared yet, so say what IS still open: VTOP's
     // own pending rows and the weight they carry. Blaming the FAT alone while
@@ -237,7 +266,7 @@ export function buildCourseIntel(
   } else if (target?.nextAssessment) {
     nextAction = `You need ~${target.nextAssessment.raw}/${target.nextAssessment.max} in the ${target.nextAssessment.name} to stay on track for ${target.grade}.`;
   } else if (target?.status === 'achieved') {
-    nextAction = `Weighted total already covers ${target.grade}. Hold attendance above 75% to keep it safe.`;
+    nextAction = `Weighted total already covers ${target.grade}. Hold attendance above ${targetPercent}% to keep it safe.`;
   } else if (attRisk === 'borderline') {
     nextAction = 'Attendance is borderline — attend the next classes before missing any.';
   } else if (bunk?.safeToBunk) {
@@ -256,6 +285,7 @@ export function buildCourseIntel(
       attendance
         ?? { courseCode: marks?.courseCode ?? '', courseTitle: marks?.courseTitle ?? '', type: '' as AttendanceRecord['type'], slot: '' },
     ),
+    targetPercent,
     curriculum: scheme?.kind ?? 'unknown',
     schemeLabel: scheme?.label ?? 'Marking scheme unavailable',
     attendance: {
@@ -292,15 +322,15 @@ function weightRemainingTotal(marks: CourseMarks | undefined): number {
 }
 
 /** Weight the target still needs (re-read from the target record). */
-function weightNeededFor(target: NonNullable<CourseIntel['target']>): number {
-  return target.weightNeeded;
-}
-
 /** All courses with any intelligence signal, course-code aligned. */
 export function buildCourseIntelRows(
   attendance: AttendanceRecord[],
   marks: CourseMarks[],
   targets: Record<string, TargetGrade> = {},
+  /** The student's saved attendance bar, threaded from the Academics slider. */
+  targetPercent: number = ATTENDANCE_TARGET_DEFAULT,
+  /** VTOP register number — its first two digits decide the theory/lab rule. */
+  regNo?: string,
 ): CourseIntel[] {
   const marksByCode = new Map<string, CourseMarks>();
   for (const mk of marks) marksByCode.set(mk.courseCode.toUpperCase(), mk);
@@ -323,14 +353,14 @@ export function buildCourseIntelRows(
     // total is never shown twice under two cards.
     const ownerIndex = Math.max(0, list.findIndex((a) => attendanceComponent(a) === 'Theory'));
     list.forEach((att, index) => {
-      const row = buildCourseIntel(att, index === ownerIndex ? mk : undefined, targets[code] ?? 'B');
+      const row = buildCourseIntel(att, index === ownerIndex ? mk : undefined, targets[code] ?? 'B', targetPercent, regNo);
       if (row) rows.push(row);
     });
   }
   // Courses that only have marks so far (attendance not published yet).
   for (const [code, mk] of marksByCode) {
     if (rowsByCode.has(code)) continue;
-    const row = buildCourseIntel(undefined, mk, targets[code] ?? 'B');
+    const row = buildCourseIntel(undefined, mk, targets[code] ?? 'B', targetPercent, regNo);
     if (row) rows.push(row);
   }
   // At-risk attendance first, then alphabetical.

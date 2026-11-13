@@ -4,51 +4,57 @@
  * VTOP exposes assessment rows before a complete final-grade model exists.
  * These helpers intentionally summarize only evaluated marks and never turn
  * partial marks into a grade/status warning.
+ *
+ * The arithmetic is `internalMarksOf` from the grade model — the same rows and
+ * the same weights the predictor uses — so the "Internal: 12.8/15" a student
+ * reads on a card is the weighted mark VTOP awarded, not a raw sum of cell
+ * values that mixes a 15-mark CAT with a 5-mark DA. Records with no declared
+ * weight at all (older caches) still fall back to their raw scored/max, because
+ * there the plain division is the only true statement available.
  */
 
-import { isEvaluatedAssessment } from './assessmentStatus';
+import { attendancePercentLabel } from './attendanceBands';
+import { internalMarksOf, type MarksLikeCourse, type MarksLikeRow } from './gradeModel';
 
-export interface InternalMarkComponent {
-  scored?: number | null;
-  max?: number | null;
-  /** VTOP's own evaluation state — 'Pending' rows are never shown as a zero. */
-  status?: string | null;
-}
+/** One VTOP assessment row; kept for callers that spell the shape themselves. */
+export type InternalMarkComponent = MarksLikeRow;
 
-export interface InternalMarksLike {
-  cat1?: InternalMarkComponent | null;
-  cat2?: InternalMarkComponent | null;
-  da1?: InternalMarkComponent | null;
-  da2?: InternalMarkComponent | null;
-  da3?: InternalMarkComponent | null;
-  quiz?: InternalMarkComponent | null;
+export interface InternalMarksLike extends MarksLikeCourse {
   /** Kept for compatibility with older cached records; never rendered here. */
   currentEstimatedGrade?: string | null;
 }
 
-const COMPONENTS = ['cat1', 'cat2', 'da1', 'da2', 'da3', 'quiz'] as const;
-
-function evaluated(component: InternalMarkComponent | null | undefined): component is Required<InternalMarkComponent> {
-  return isEvaluatedAssessment(component)
-    && Number(component!.scored) >= 0;
+/**
+ * A mark the way VTOP writes it: whole numbers stay whole, decimals keep at
+ * most two places with trailing zeros trimmed (12.80 → 12.8, 12.00 → 12).
+ */
+export function formatInternalMark(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function formatMark(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+/**
+ * The internal figure alone ("12.8/15"), for a table whose row label already
+ * says "Internal". Null when nothing internal has been graded.
+ */
+export function internalMarksValueLabel(mark?: InternalMarksLike | null): string | null {
+  if (!mark) return null;
+  const summary = internalMarksOf(mark);
+
+  // Weighted first: VTOP's own weight space, the one the final grade lives in.
+  if (summary.gradedWeight > 0) {
+    return `${formatInternalMark(summary.earned)}/${formatInternalMark(summary.gradedWeight)}`;
+  }
+  // No weights declared anywhere: the raw cells are all that can be stated.
+  if (summary.rawMax > 0) {
+    return `${formatInternalMark(summary.rawScored)}/${formatInternalMark(summary.rawMax)}`;
+  }
+  return null;
 }
 
 /** Return recorded marks only; pending components are not treated as zero. */
 export function getInternalMarksSummary(mark?: InternalMarksLike | null): string {
-  if (!mark) return 'Internal marks not available';
-  const rows = COMPONENTS
-    .map((key) => mark[key])
-    .filter(evaluated);
-
-  if (!rows.length) return 'Internal marks not available';
-
-  const scored = rows.reduce((sum, row) => sum + Number(row.scored), 0);
-  const max = rows.reduce((sum, row) => sum + Number(row.max), 0);
-  return `Internal: ${formatMark(scored)}/${formatMark(max)}`;
+  const value = internalMarksValueLabel(mark);
+  return value ? `Internal: ${value}` : 'Internal marks not available';
 }
 
 /** Dashboard/course label that deliberately ignores legacy inferred grades. */
@@ -57,7 +63,7 @@ export function getCourseAcademicLabel(
   attendancePercentage?: number | null,
 ): string {
   if (mark) return getInternalMarksSummary(mark);
-  return Number.isFinite(attendancePercentage) ? `${Number(attendancePercentage).toFixed(1)}% attendance` : 'Not available';
+  return Number.isFinite(attendancePercentage) ? `${attendancePercentLabel(Number(attendancePercentage))}% attendance` : 'Not available';
 }
 
 export interface InternalMarksRatio {
@@ -78,10 +84,9 @@ export interface InternalMarksRatio {
  */
 export function getInternalMarksRatio(mark?: InternalMarksLike | null): InternalMarksRatio | null {
   if (!mark) return null;
-  const rows = COMPONENTS.map((key) => mark[key]).filter(evaluated);
-  if (!rows.length) return null;
-  const scored = rows.reduce((sum, row) => sum + Number(row.scored), 0);
-  const max = rows.reduce((sum, row) => sum + Number(row.max), 0);
+  const summary = internalMarksOf(mark);
+  const scored = summary.gradedWeight > 0 ? summary.earned : summary.rawScored;
+  const max = summary.gradedWeight > 0 ? summary.gradedWeight : summary.rawMax;
   if (!(max > 0)) return null;
   return { scored, max, percent: Math.max(0, Math.min(100, (scored / max) * 100)) };
 }

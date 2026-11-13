@@ -89,6 +89,15 @@ export function parseMoodleDate(raw: string): string | null {
   if (/pm/i.test(m[6]) && hour < 12) hour += 12;
   if (/am/i.test(m[6]) && hour === 12) hour = 0;
 
+  // A day the month never had is not a deadline. Date.UTC does not object to
+  // "31 February" — it rolls it into March and hands the student a submission
+  // time Moodle never set, so the round trip has to land on the same day it
+  // started from or the date is dropped (null = "no due date", never a guess).
+  const dayProbe = new Date(Date.UTC(year, month, day));
+  if (dayProbe.getUTCFullYear() !== year || dayProbe.getUTCMonth() !== month || dayProbe.getUTCDate() !== day) {
+    return null;
+  }
+
   // Year omitted -> prefer the current year; if that instant already passed,
   // assume the next year (Moodle calendar lists upcoming-only events anyway).
   if (!m[3]) {

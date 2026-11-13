@@ -40,20 +40,27 @@ from them is included in this repository.
 
 Live campus data for the library catalogue, clubs directory and transport
 routes is ingested **server-side** by UltraCC's own edge function
-(`supabase/functions/campus-data`), cached in the project's Supabase database,
-and served to the app through the UltraCC API. The upstream endpoints are
-supplied as deploy-time environment variables and are never committed to this
-repository.
+(`supabase/functions/campus-data`) from the following third-party-hosted
+upstream services, cached in the project's Supabase database, and served to the
+app through the UltraCC API:
 
-The frontend makes **zero direct requests** to any upstream host (enforced by
+- **KOHA library catalogue gateway** — `api.amazecc.com/api/koha/...`
+  (live VIT Central Library catalogue search + detail)
+- **VIT clubs directory** — `api.amazecc.com/api/clubs/details`
+  (official VIT Chennai club data)
+- **VIT Chennai transport routes** — `api.amazecc.com/api/transport/routes`
+  (route and supervisor-contact refresh)
+
+The frontend makes **zero direct requests** to these hosts (enforced by
 `src/lib/__tests__/upstreamIsolation.test.ts`); upstream access exists only
-inside the server-side ingest code.
+inside the server-side ingest code. Neither service imposes client-side
+attribution requirements; this section documents them for transparency.
+Migration to independent/official sources is planned where feasible.
 
 The **VIT Chennai transport route dataset** (110 routes, stops, pickup times,
-dispersal placements, bus rules) is served from UltraCC's own bundled,
-verified dataset (`src/data/transport.json`, mirrored server-side in
-`supabase/functions/campus-data/transport.json`) — no third-party API
-dependency.
+dispersal placements, bus rules) is bundled with the app (`src/data/transport.json`,
+mirrored server-side in `supabase/functions/campus-data/transport.json`), so
+the screens work with no upstream access; the feed above only refreshes it.
 
 ---
 
@@ -66,9 +73,9 @@ dependency.
   reproduced verbatim at the end of this section. UltraCC's own
   [`LICENSE`](./LICENSE) covers UltraCC's original code only: using their
   archive does not relicense it, and this notice does not relicense theirs.
-- **Source:** the metadata is taken from the project's public, MIT-licensed
-  repository. No separate permission was sought — the MIT licence covers the
-  use of the code and metadata, subject to its terms.
+- **Permission:** CodeChef-VIT gave explicit permission to use their API, code,
+  metadata and paper content. That permission is separate from, and additional
+  to, the MIT licence on their repository.
 - **What UltraCC takes:** question-paper **metadata** only, fetched
   server-side by `supabase/functions/pyq-sync` and normalised into the
   project's own `public.pyq_papers` table. No browser talks to their site;

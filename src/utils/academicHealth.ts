@@ -1,8 +1,9 @@
-import { AttendanceRecord, TimetableSlot, ExamSchedule, CourseMarks } from '../types';
+import { AttendanceRecord, TimetableSlot, CourseMarks } from '../types';
 import { ALL_WEEK_DAYS } from './timetableGrid';
 import { sessionPeriodCount } from './labSessions';
-import { curriculumAwareTotal, evaluatedInternalWeight, resolveMarkingScheme } from './markingSchemes';
+import { curriculumAwareTotal, evaluatedWeight } from './markingSchemes';
 import { attendanceComponent, componentLabel } from './attendanceComponents';
+import { VTOP_ATTENDANCE_FLOOR, attendancePercentLabel } from './attendanceBands';
 
 export interface AcademicHealthResult {
   score: number | null;
@@ -13,17 +14,6 @@ export interface AcademicHealthResult {
   cgpaScore: number | null;
   marksScore: number | null;
   recommendations: string[];
-}
-
-export interface ExamPressureResult {
-  nextExam: ExamSchedule | null;
-  daysToNextExam: number | null;
-  examsIn7Days: number;
-  examsIn14Days: number;
-  totalExams: number;
-  pressureLevel: 'Relaxed' | 'Moderate' | 'High' | 'Peak';
-  color: string;
-  badge: string;
 }
 
 export interface WeeklySummaryResult {
@@ -80,16 +70,16 @@ export function calculateAcademicHealth(
       const held = validAtt.reduce((sum, a) => sum + a.totalHeld, 0);
       attScore = Math.max(0, Math.min(100, (attended / held) * 100));
     }
-    const criticalAtt = validAtt.filter((a) => a.percentage < 75);
+    const criticalAtt = validAtt.filter((a) => a.percentage < VTOP_ATTENDANCE_FLOOR);
     if (criticalAtt.length > 0) {
       // Named per VTOP row: theory and lab are separate records, so the alert
       // says WHICH component is short instead of blaming the whole course.
       const worst = [...criticalAtt]
         .sort((a, b) => a.percentage - b.percentage)
         .slice(0, 3)
-        .map((a) => `${a.courseCode} ${componentLabel(attendanceComponent(a)).toLowerCase()} ${Math.round(a.percentage)}%`);
+        .map((a) => `${a.courseCode} ${componentLabel(attendanceComponent(a)).toLowerCase()} ${attendancePercentLabel(a.percentage)}%`);
       recommendations.push(
-        `Attendance Alert: ${criticalAtt.length} tracked component${criticalAtt.length > 1 ? 's' : ''} under 75% mandatory threshold (${worst.join(', ')}${criticalAtt.length > 3 ? ', …' : ''}).`
+        `${criticalAtt.length === 1 ? 'One component is' : `${criticalAtt.length} components are`} under VTOP’s ${VTOP_ATTENDANCE_FLOOR}% line (${worst.join(', ')}${criticalAtt.length > 3 ? ', …' : ''}) — attend ${criticalAtt.length === 1 ? 'its' : 'their'} next classes to get back above it.`
       );
     }
   }
@@ -106,31 +96,22 @@ export function calculateAcademicHealth(
   }
 
   // 3. Marks component (0-100)
-  // Curriculum-aware: normalize each course's weighted total by the weight its
-  // scheme has actually evaluated so far (lab courses: experiments+lab FAT;
-  // theory: CAT/DA/Quiz+attendance-adjacent extras). When the curriculum can't
-  // be determined, keep the legacy /50 normalization rather than fabricating.
+  // Each course is normalised over the internal weight VTOP has actually
+  // graded for THAT course — 45 earned out of a 60-weight lab internal is 75%,
+  // not the 90% a "/50" assumption prints. A course with no observable
+  // denominator (unknown curriculum, or rows VTOP never gave a weight for) is
+  // left out entirely: the health index is an average of what can be measured,
+  // and a guessed denominator is not a measurement. Its weight then falls away
+  // — the composite renormalises over the components that did answer.
   let marksScore: number | null = null;
   if (marks && marks.length > 0) {
     const normalized: number[] = [];
     for (const m of marks) {
       if (!m.totalScoredSoFar || m.totalScoredSoFar <= 0) continue;
-      const scheme = resolveMarkingScheme(m);
-      if (scheme.isFallback) {
-        // Unknown curriculum — legacy normalization only (never a new rule).
-        normalized.push(Math.min(100, (m.totalScoredSoFar / 50) * 100));
-        continue;
-      }
-      // The denominator is the internal weight VTOP has actually graded for
-      // THIS course (observed weightage), not a fixed scheme template that
-      // assumes components the course may not run — e.g. a third DA.
-      const evaluatedWeight = evaluatedInternalWeight(m);
+      const gradedWeight = evaluatedWeight(m);
       const curriculumTotal = curriculumAwareTotal(m);
-      if (evaluatedWeight !== null && curriculumTotal !== null) {
-        normalized.push(Math.min(100, (curriculumTotal / evaluatedWeight) * 100));
-      } else {
-        normalized.push(Math.min(100, (m.totalScoredSoFar / 50) * 100));
-      }
+      if (gradedWeight === null || curriculumTotal === null) continue;
+      normalized.push(Math.min(100, (curriculumTotal / gradedWeight) * 100));
     }
     if (normalized.length > 0) {
       marksScore = normalized.reduce((s, v) => s + v, 0) / normalized.length;
@@ -204,94 +185,6 @@ export function calculateAcademicHealth(
     cgpaScore: cgpaScore !== null ? Math.round(cgpaScore) : null,
     marksScore: marksScore !== null ? Math.round(marksScore) : null,
     recommendations,
-  };
-}
-
-/**
- * Calculates upcoming exam pressure and density over 7 and 14 day horizons.
- */
-export function calculateExamPressure(exams: ExamSchedule[]): ExamPressureResult {
-  if (!exams || exams.length === 0) {
-    return {
-      nextExam: null,
-      daysToNextExam: null,
-      examsIn7Days: 0,
-      examsIn14Days: 0,
-      totalExams: 0,
-      pressureLevel: 'Relaxed',
-      color: 'text-emerald-400',
-      badge: 'No active exams',
-    };
-  }
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
-  interface ParsedExam {
-    exam: ExamSchedule;
-    timestamp: number;
-    diffDays: number;
-  }
-
-  const upcoming: ParsedExam[] = [];
-
-  for (const ex of exams) {
-    if (!ex.date) continue;
-    // Expected format: DD-MM-YYYY or YYYY-MM-DD
-    let exDate: Date | null = null;
-    const parts = ex.date.split(/[-/]/);
-    if (parts.length === 3) {
-      if (parts[0].length === 4) {
-        // YYYY-MM-DD
-        exDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-      } else {
-        // DD-MM-YYYY
-        exDate = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-      }
-    }
-
-    if (exDate && !isNaN(exDate.getTime())) {
-      const exTime = exDate.getTime();
-      const diffDays = Math.ceil((exTime - today) / (1000 * 60 * 60 * 24));
-      if (diffDays >= 0) {
-        upcoming.push({ exam: ex, timestamp: exTime, diffDays });
-      }
-    }
-  }
-
-  upcoming.sort((a, b) => a.timestamp - b.timestamp);
-
-  const next = upcoming.length > 0 ? upcoming[0] : null;
-  const examsIn7 = upcoming.filter((u) => u.diffDays <= 7).length;
-  const examsIn14 = upcoming.filter((u) => u.diffDays <= 14).length;
-
-  let pressureLevel: ExamPressureResult['pressureLevel'] = 'Relaxed';
-  let color = 'text-emerald-400';
-  let badge = 'Relaxed';
-
-  if (examsIn7 >= 3 || (next && next.diffDays <= 1)) {
-    pressureLevel = 'Peak';
-    color = 'text-rose-400';
-    badge = 'High Intensity';
-  } else if (examsIn7 >= 1 || examsIn14 >= 3) {
-    pressureLevel = 'High';
-    color = 'text-amber-400';
-    badge = 'Exam Week';
-  } else if (examsIn14 >= 1) {
-    pressureLevel = 'Moderate';
-    color = 'text-sky-400';
-    badge = 'Approaching';
-  }
-
-  return {
-    nextExam: next ? next.exam : null,
-    daysToNextExam: next ? next.diffDays : null,
-    examsIn7Days: examsIn7,
-    examsIn14Days: examsIn14,
-    totalExams: upcoming.length,
-    pressureLevel,
-    color,
-    badge,
   };
 }
 

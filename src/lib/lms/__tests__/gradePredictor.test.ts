@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectedTotal, gradeFromScore, gradeProbabilities } from '../../../components/GradePredictor';
+import { gradeFromRelative, projectedTotal } from '../../../utils/gradeProjection';
 import { CourseMarks } from '../../../types';
 
 function marks(partial: Partial<CourseMarks> = {}): CourseMarks {
@@ -96,37 +96,21 @@ describe('projectedTotal', () => {
       quiz: { scored: 0, max: 0, weightage: 0 },
       fat: { max: 0, weightage: 0 },
     });
-    expect(projectedTotal(blank, 80)).toBe(0);
+    // `null`, not `0`. The screen used to turn this into "0.0 / 100" and a grade
+    // F — a result no student earned, and one they could then share into the
+    // community curve as if it were a mark.
+    expect(projectedTotal(blank, 80)).toBeNull();
   });
 });
 
-describe('gradeFromScore', () => {
+describe('gradeFromRelative', () => {
   it('maps to the community cutoff bands', () => {
-    expect(gradeFromScore(80, 58, 12)).toBe('S'); // z = 1.83
-    expect(gradeFromScore(72, 58, 12)).toBe('A'); // z = 1.17
-    expect(gradeFromScore(64, 58, 12)).toBe('B'); // z = 0.5
-    expect(gradeFromScore(58, 58, 12)).toBe('C'); // z = 0
-    expect(gradeFromScore(46, 58, 12)).toBe('D'); // z = -1.0 (D band: -1.0..-0.5)
-    expect(gradeFromScore(40, 58, 12)).toBe('E'); // z = -1.5 (E band: -1.5..-1.0)
-    expect(gradeFromScore(30, 58, 12)).toBe('F'); // z = -2.33
-  });
-});
-
-describe('gradeProbabilities', () => {
-  it('produces a distribution summing to 1', () => {
-    const probs = gradeProbabilities(60, 58, 12);
-    const sum = Object.values(probs).reduce((a, b) => a + b, 0);
-    expect(Math.abs(sum - 1)).toBeLessThan(0.001);
-  });
-
-  it('peaks near the middle grade for a mean-centered score', () => {
-    const probs = gradeProbabilities(58, 58, 12);
-    expect(probs.C).toBeGreaterThan(probs.S);
-    expect(probs.C).toBeGreaterThan(probs.F);
-  });
-
-  it('favors top grades for a far-above-mean score', () => {
-    const probs = gradeProbabilities(95, 58, 12);
-    expect(probs.S).toBeGreaterThan(0.9);
+    expect(gradeFromRelative(80, 58, 12)).toBe('S'); // z = 1.83
+    expect(gradeFromRelative(72, 58, 12)).toBe('A'); // z = 1.17
+    expect(gradeFromRelative(64, 58, 12)).toBe('B'); // z = 0.5
+    expect(gradeFromRelative(58, 58, 12)).toBe('C'); // z = 0
+    expect(gradeFromRelative(46, 58, 12)).toBe('D'); // z = -1.0 (D band: -1.0..-0.5)
+    expect(gradeFromRelative(40, 58, 12)).toBe('E'); // z = -1.5 (E band: -1.5..-1.0)
+    expect(gradeFromRelative(30, 58, 12)).toBe('F'); // z = -2.33
   });
 });

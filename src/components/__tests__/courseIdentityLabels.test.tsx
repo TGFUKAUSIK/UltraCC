@@ -23,7 +23,7 @@ import { StudentProfile, AttendanceRecord, TimetableSlot, TransportInfo } from '
 /** Exactly what VTOP's live Chennai profile page states (see the gateway parser). */
 const vtopProfile: StudentProfile = {
   registrationNo: '25BEE0000',
-  name: 'Kausik R',
+  name: 'Aarav R',
   program: 'UG',
   branch: '',
   groupStudied: 'PCM',
@@ -38,7 +38,7 @@ const vtopProfile: StudentProfile = {
 const vtopTransport: TransportInfo = {
   hasRegistration: true,
   registerNumber: '25BEE0000',
-  name: 'Kausik R',
+  name: 'Aarav R',
   programme: 'B.Tech.',
   branch: 'Electrical and Electronics Engineering',
   routeSelected: 'AMINJIKARAI',
@@ -121,7 +121,7 @@ describe('dashboard identity and summary rows', () => {
 
   it('names the registered programme in the header, never the +2 group', () => {
     mount(dash());
-    const line = host.querySelector<HTMLElement>('.portal-heading-identity p');
+    const line = host.querySelector<HTMLElement>('.uc-home-id-main span');
     expect(line).toBeTruthy();
     expect(line!.textContent).toContain('Electrical and Electronics Engineering');
     expect(line!.textContent).not.toMatch(/PCM/i);
@@ -129,21 +129,25 @@ describe('dashboard identity and summary rows', () => {
 
   it('gives Programme, Branch and School their own rows with their own values', () => {
     mount(dash());
-    const list = host.querySelector<HTMLElement>('.portal-detail-list');
+    const list = host.querySelector<HTMLElement>('.uc-facts');
     expect(list).toBeTruthy();
     expect(valueForLabel(list!, 'Programme')).toBe('B.Tech.');
     expect(valueForLabel(list!, 'Branch')).toBe('Electrical and Electronics Engineering');
     // VTOP's "School" row holds a research centre; the school shown is the one
-    // the student's registered branch actually sits in.
-    expect(valueForLabel(list!, 'School')).toBe('SELECT');
+    // the student's registered branch actually sits in, spelled out — the
+    // acronym "SELECT" reads as a placeholder on the student's own record.
+    expect(valueForLabel(list!, 'School')).toBe('School of Electrical Engineering');
     expect(list!.textContent).not.toContain('Centre for e-Automation');
+    // The acronym itself is a placeholder the screens spell out, so it must not
+    // survive anywhere on the summary.
+    expect(list!.textContent).not.toMatch(/SELECT/);
     // "PCM" is not a branch, so it must not appear anywhere in the summary.
     expect(list!.textContent).not.toMatch(/PCM/i);
   });
 
   it('shows the registered course on the course card', () => {
     mount(dash());
-    const grid = host.querySelector<HTMLElement>('.portal-course-grid');
+    const grid = host.querySelector<HTMLElement>('.uc-courses');
     expect(grid).toBeTruthy();
     expect(grid!.textContent).toContain('BAEEE103');
     expect(grid!.textContent).toContain('Analog Electronics');
@@ -159,7 +163,8 @@ describe('My Info profile card', () => {
     expect(valueForLabel(host, 'Class XII group')).toBe('PCM');
     expect(valueForLabel(host, 'Branch')).toBe('Electrical and Electronics Engineering');
     expect(valueForLabel(host, 'Programme')).toBe('B.Tech.');
-    expect(valueForLabel(host, 'School')).toBe('SELECT');
+    expect(valueForLabel(host, 'School')).toBe('School of Electrical Engineering');
+    expect(text).not.toMatch(/SELECT/);
   });
 
   it('reads the branch from VTOP only — the value beside "Branch" is never a +2 group', () => {
